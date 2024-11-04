@@ -73,7 +73,7 @@ AllReduce::AllReduce(FFModel &model,
   for (int i = 0; i < numdim; i++) {
     dims[i] = _input->dims[i];
   }
-  assert(dims[allreduce_dim].degree > 1);
+  // assert(dims[allreduce_dim].degree > 1);
   // ParallelTensorBase::update_parallel_ids(numdim, dims);
   outputs[0] = model.create_parallel_tensor_legion_ordering(
       numdim, dims, _input->data_type, this);
@@ -131,6 +131,7 @@ void AllReduce::init(FFModel const &ff) {
                          false /*must*/,
                          0 /*mapper_id*/,
                          outputs[0]->machine_view.hash());
+  launcher.concurrent = true;
   launcher.add_region_requirement(RegionRequirement(inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_ONLY,
@@ -164,6 +165,7 @@ void AllReduce::forward(FFModel const &ff) {
                          false /*must*/,
                          0 /*mapper_id*/,
                          outputs[0]->machine_view.hash());
+  launcher.concurrent = true;
   launcher.add_region_requirement(RegionRequirement(inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_ONLY,
@@ -195,7 +197,9 @@ void AllReduce::forward_task(Task const *task,
       m->output_type[0], regions[1], task->regions[1], FID_DATA, ctx, runtime);
 
   assert(input.data_type == output.data_type);
+  // runtime->concurrent_task_barrier(ctx);
   forward_kernel_wrapper(m, input, output);
+  // runtime->concurrent_task_barrier(ctx);
 }
 
 void AllReduce::backward(FFModel const &ff) {
@@ -212,6 +216,7 @@ void AllReduce::backward(FFModel const &ff) {
                          false /*must*/,
                          0 /*mapper_id*/,
                          inputs[0]->machine_view.hash());
+  // launcher.concurrent = true;
   launcher.add_region_requirement(RegionRequirement(inputs[0]->part_grad,
                                                     0 /*projection id*/,
                                                     READ_WRITE,
@@ -265,6 +270,7 @@ void AllReduce::init_inference(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
+  launcher.concurrent = true;
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_ONLY,
@@ -306,6 +312,7 @@ FutureMap AllReduce::inference(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
+  launcher.concurrent = true;
   launcher.add_future(bc);
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
@@ -342,7 +349,9 @@ void AllReduce::inference_task(Task const *task,
       m->output_type[0], regions[1], task->regions[1], FID_DATA, ctx, runtime);
 
   assert(input.data_type == output.data_type);
+  // runtime->concurrent_task_barrier(ctx);
   inference_kernel_wrapper(m, bc, input, output);
+  // runtime->concurrent_task_barrier(ctx);
   if (m->inference_debugging) {
     assert(task->index_point.get_dim() == 1);
     int shard_id = task->index_point.point_data[0];

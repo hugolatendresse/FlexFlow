@@ -448,73 +448,49 @@ __host__ void
       case OP_INC_MULTIHEAD_SELF_ATTENTION: {
         assert(fused->op_num_inputs[op] == 1);
         assert(fused->op_num_outputs[op] == 1);
+        assert(fused->op_num_weights[op] == 0);
         IncMultiHeadSelfAttentionMeta *m =
             (IncMultiHeadSelfAttentionMeta *)metas->meta[op];
-        assert(fused->op_num_weights[op] ==
-               (1 + (int)(*m->qkv_bias || *m->final_bias)));
-        GenericTensorAccessorR biases;
-        if (*m->qkv_bias || *m->final_bias) {
-          assert(fused->op_num_weights[op] == 2);
-          biases = my_weight_accessor[1];
-        }
         IncMultiHeadSelfAttention::inference_kernel_wrapper(
             m,
             bc,
             task->index_point.point_data[0],
             my_input_accessor[0],
-            my_weight_accessor[0],
-            my_output_accessor[0],
-            biases);
+            my_output_accessor[0]);
         break;
       }
       case OP_TREE_INC_MULTIHEAD_SELF_ATTENTION: {
         assert(fused->op_num_inputs[op] == 1);
         assert(fused->op_num_outputs[op] == 1);
+        assert(fused->op_num_weights[op] == 0);
         TreeIncMultiHeadSelfAttentionMeta *m =
             (TreeIncMultiHeadSelfAttentionMeta *)metas->meta[op];
         TreeVerifyBatchConfig const &tree_bc =
             Future(task->futures[0]).get_result<TreeVerifyBatchConfig>();
-        assert(fused->op_num_weights[op] ==
-               (1 + (int)(*m->qkv_bias || *m->final_bias)));
-        GenericTensorAccessorR biases;
-        if (*m->qkv_bias || *m->final_bias) {
-          assert(fused->op_num_weights[op] == 2);
-          biases = my_weight_accessor[1];
-        }
         TreeIncMultiHeadSelfAttention::inference_kernel_wrapper(
             m,
             &tree_bc,
             task->index_point.point_data[0],
             my_input_accessor[0],
-            my_weight_accessor[0],
-            my_output_accessor[0],
-            biases);
+            my_output_accessor[0]);
         break;
       }
       case OP_SPEC_INC_MULTIHEAD_SELF_ATTENTION: {
         assert(fused->op_num_inputs[op] == 1);
         assert(fused->op_num_outputs[op] == 1);
+        assert(fused->op_num_weights[op] == 0);
         SpecIncMultiHeadSelfAttentionMeta const *m =
             (SpecIncMultiHeadSelfAttentionMeta *)metas->meta[op];
         // BeamSearchBatchConfig const *beam_bc =
         //     (BeamSearchBatchConfig *)task->args;
         BeamSearchBatchConfig const &beam_bc =
             Future(task->futures[0]).get_result<BeamSearchBatchConfig>();
-        assert(fused->op_num_weights[op] ==
-               (1 + (int)(*m->qkv_bias || *m->final_bias)));
-        GenericTensorAccessorR biases;
-        if (*m->qkv_bias || *m->final_bias) {
-          assert(fused->op_num_weights[op] == 2);
-          biases = my_weight_accessor[1];
-        }
         SpecIncMultiHeadSelfAttention::inference_kernel_wrapper(
             m,
             &beam_bc,
             task->index_point.point_data[0],
             my_input_accessor[0],
-            my_weight_accessor[0],
-            my_output_accessor[0],
-            biases);
+            my_output_accessor[0]);
         break;
       }
       case OP_LAYERNORM: {
@@ -647,8 +623,10 @@ __host__ void
         assert(fused->op_num_inputs[op] == 1);
         assert(fused->op_num_outputs[op] == 1);
         AllReduceMeta const *m = (AllReduceMeta *)metas->meta[op];
+        runtime->concurrent_task_barrier(ctx);
         Kernels::AllReduce::inference_kernel_wrapper(
             m, bc, my_input_accessor[0], my_output_accessor[0]);
+        runtime->concurrent_task_barrier(ctx);
         break;
       }
       case OP_PARALLEL_IDENTITY: {
@@ -666,12 +644,7 @@ __host__ void
         assert(false && "Fusion currently does not support type");
       }
     }
-    if (metas->meta[op]->inference_debugging &&
-        !(fused->op_op_type[op] == OP_ALLREDUCE ||
-          fused->op_op_type[op] == OP_PARALLEL_IDENTITY ||
-          fused->op_op_type[op] == OP_REPLICATE ||
-          fused->op_op_type[op] == OP_REPARTITION ||
-          fused->op_op_type[op] == OP_COMBINE)) {
+    if (metas->meta[op]->inference_debugging) {
       std::vector<GenericTensorAccessorR> input_accessors_to_save;
       std::vector<GenericTensorAccessorR> weight_accessors_to_save;
       std::vector<GenericTensorAccessorR> output_accessors_to_save;
@@ -917,7 +890,12 @@ __host__ void FusedOp::peft_bwd_task(Task const *task,
         // since we ``inplace'' the output for LoRA
         assert(my_input_grad_accessor[1].ptr == my_output_grad_accessor[0].ptr);
         Kernels::LoraLinear::peft_bwd_kernel_wrapper(
-            m, bc, my_input_grad_accessor[0], my_output_grad_accessor[0]);
+            ctx,
+            runtime,
+            m,
+            bc,
+            my_input_grad_accessor[0],
+            my_output_grad_accessor[0]);
         break;
       }
       case OP_BATCHMATMUL: {
@@ -1048,21 +1026,15 @@ __host__ void FusedOp::peft_bwd_task(Task const *task,
         assert(fused->op_num_outputs[op] == 1);
         IncMultiHeadSelfAttentionMeta *m =
             (IncMultiHeadSelfAttentionMeta *)metas->meta[op];
-        assert(fused->op_num_weights[op] ==
-               (1 + (int)(*m->qkv_bias || *m->final_bias)));
+        assert(fused->op_num_weights[op] == 0);
         GenericTensorAccessorR biases;
-        if (*m->qkv_bias || *m->final_bias) {
-          assert(fused->op_num_weights[op] == 2);
-          biases = my_weight_accessor[1];
-        }
         IncMultiHeadSelfAttention::peft_bwd_kernel_wrapper(
             m,
             bc,
             task->index_point.point_data[0],
             my_input_grad_accessor[0],
-            my_weight_accessor[0],
-            my_output_grad_accessor[0],
-            biases);
+            my_output_grad_accessor[0]);
+        // biases);
         break;
       }
       case OP_TREE_INC_MULTIHEAD_SELF_ATTENTION:
@@ -1184,8 +1156,10 @@ __host__ void FusedOp::peft_bwd_task(Task const *task,
         assert(fused->op_num_inputs[op] == 1);
         assert(fused->op_num_outputs[op] == 1);
         ParallelIdentityMeta const *m = (ParallelIdentityMeta *)metas->meta[op];
+        runtime->concurrent_task_barrier(ctx);
         Kernels::ParallelIdentity::peft_bwd_kernel_wrapper(
             m, bc, my_input_grad_accessor[0], my_output_grad_accessor[0]);
+        runtime->concurrent_task_barrier(ctx);
         break;
       }
       default: {
@@ -1678,77 +1652,77 @@ __host__ void FusedOp::backward_task(Task const *task,
     int sum = fused->numInputs + fused->numWeights + fused->numOutputs;
     assert(sum * 2 == (int)regions.size());
   }
-  GenericTensorAccessorR input_accessor[MAX_NUM_INPUTS];
-  GenericTensorAccessorW input_grad_accessor[MAX_NUM_INPUTS];
-  GenericTensorAccessorR weight_accessor[MAX_NUM_WEIGHTS];
-  GenericTensorAccessorW weight_grad_accessor[MAX_NUM_WEIGHTS];
-  GenericTensorAccessorR output_accessor[MAX_NUM_OUTPUTS];
-  GenericTensorAccessorW output_grad_accessor[MAX_NUM_OUTPUTS];
+  std::vector<GenericTensorAccessorR> input_accessor;
+  std::vector<GenericTensorAccessorW> input_grad_accessor;
+  std::vector<GenericTensorAccessorR> weight_accessor;
+  std::vector<GenericTensorAccessorW> weight_grad_accessor;
+  std::vector<GenericTensorAccessorR> output_accessor;
+  std::vector<GenericTensorAccessorW> output_grad_accessor;
   int roff = 0;
   assert(fused->numInputs <= MAX_NUM_INPUTS);
   for (int i = 0; i < fused->numInputs; i++) {
-    input_accessor[i] =
+    input_accessor.push_back(
         helperGetGenericTensorAccessorRO(fused->input_data_types[i],
                                          regions[i],
                                          task->regions[i],
                                          FID_DATA,
                                          ctx,
-                                         runtime);
+                                         runtime));
   }
   roff += fused->numInputs;
   assert(fused->numWeights <= MAX_NUM_WEIGHTS);
   for (int i = 0; i < fused->numWeights; i++) {
-    weight_accessor[i] =
+    weight_accessor.push_back(
         helperGetGenericTensorAccessorRO(fused->weight_data_types[i],
                                          regions[i + roff],
                                          task->regions[i + roff],
                                          FID_DATA,
                                          ctx,
-                                         runtime);
+                                         runtime));
   }
   roff += fused->numWeights;
   assert(fused->numOutputs <= MAX_NUM_OUTPUTS);
   for (int i = 0; i < fused->numOutputs; i++) {
-    output_accessor[i] =
+    output_accessor.push_back(
         helperGetGenericTensorAccessorRO(fused->output_data_types[i],
                                          regions[i + roff],
                                          task->regions[i + roff],
                                          FID_DATA,
                                          ctx,
-                                         runtime);
+                                         runtime));
   }
   roff += fused->numOutputs;
   for (int i = 0; i < fused->numInputs; i++) {
-    input_grad_accessor[i] =
+    input_grad_accessor.push_back(
         helperGetGenericTensorAccessorRW(fused->input_data_types[i],
                                          regions[i + roff],
                                          task->regions[i + roff],
                                          FID_DATA,
                                          ctx,
-                                         runtime);
+                                         runtime));
     assert(input_grad_accessor[i].domain == input_accessor[i].domain);
   }
   roff += fused->numInputs;
   for (int i = 0; i < fused->numWeights; i++) {
-    weight_grad_accessor[i] =
+    weight_grad_accessor.push_back(
         helperGetGenericTensorAccessorRW(fused->weight_data_types[i],
                                          regions[i + roff],
                                          task->regions[i + roff],
                                          FID_DATA,
                                          ctx,
-                                         runtime);
+                                         runtime));
     assert(weight_grad_accessor[i].domain.get_volume() ==
            weight_accessor[i].domain.get_volume());
   }
   roff += fused->numWeights;
   for (int i = 0; i < fused->numOutputs; i++) {
-    output_grad_accessor[i] =
+    output_grad_accessor.push_back(
         helperGetGenericTensorAccessorRW(fused->output_data_types[i],
                                          regions[i + roff],
                                          task->regions[i + roff],
                                          FID_DATA,
                                          ctx,
-                                         runtime);
+                                         runtime));
     assert(output_grad_accessor[i].domain == output_accessor[i].domain);
   }
   roff += fused->numOutputs;
@@ -1767,12 +1741,6 @@ __host__ void FusedOp::backward_task(Task const *task,
   }
 
   int ioff = 0, woff = 0, ooff = 0;
-  GenericTensorAccessorR my_input_accessor[MAX_NUM_INPUTS];
-  GenericTensorAccessorR my_weight_accessor[MAX_NUM_WEIGHTS];
-  GenericTensorAccessorR my_output_accessor[MAX_NUM_OUTPUTS];
-  GenericTensorAccessorW my_input_grad_accessor[MAX_NUM_INPUTS];
-  GenericTensorAccessorW my_weight_grad_accessor[MAX_NUM_WEIGHTS];
-  GenericTensorAccessorW my_output_grad_accessor[MAX_NUM_OUTPUTS];
   // Do backpropagation in the reverse ordering
   for (int op = 0; op < fused->numOperators; op++) {
     ioff += fused->op_num_inputs[op];
@@ -1781,18 +1749,24 @@ __host__ void FusedOp::backward_task(Task const *task,
   }
 
   for (int op = fused->numOperators - 1; op >= 0; op--) {
+    std::vector<GenericTensorAccessorR> my_input_accessor;
+    std::vector<GenericTensorAccessorR> my_weight_accessor;
+    std::vector<GenericTensorAccessorR> my_output_accessor;
+    std::vector<GenericTensorAccessorW> my_input_grad_accessor;
+    std::vector<GenericTensorAccessorW> my_weight_grad_accessor;
+    std::vector<GenericTensorAccessorW> my_output_grad_accessor;
     ioff -= fused->op_num_inputs[op];
     woff -= fused->op_num_weights[op];
     ooff -= fused->op_num_outputs[op];
     for (int i = 0; i < fused->op_num_inputs[op]; i++) {
       int my_off = fused->op_input_idx[i + ioff];
       if (fused->op_input_source[i + ioff] == SOURCE_INPUT) {
-        my_input_accessor[i] = input_accessor[my_off];
-        my_input_grad_accessor[i] = input_grad_accessor[my_off];
+        my_input_accessor.push_back(input_accessor[my_off]);
+        my_input_grad_accessor.push_back(input_grad_accessor[my_off]);
         assert(my_input_grad_accessor[i].domain == my_input_accessor[i].domain);
       } else if (fused->op_input_source[i + ioff] == SOURCE_OUTPUT) {
-        my_input_accessor[i] = output_accessor[my_off];
-        my_input_grad_accessor[i] = output_grad_accessor[my_off];
+        my_input_accessor.push_back(output_accessor[my_off]);
+        my_input_grad_accessor.push_back(output_grad_accessor[my_off]);
         assert(my_input_grad_accessor[i].domain == my_input_accessor[i].domain);
       } else {
         assert(false);
@@ -1800,17 +1774,18 @@ __host__ void FusedOp::backward_task(Task const *task,
     }
     for (int i = 0; i < fused->op_num_weights[op]; i++) {
       assert(fused->op_weight_source[i + woff] == SOURCE_WEIGHT);
-      my_weight_accessor[i] = weight_accessor[fused->op_weight_idx[i + woff]];
-      my_weight_grad_accessor[i] =
-          weight_grad_accessor[fused->op_weight_idx[i + woff]];
+      my_weight_accessor.push_back(
+          weight_accessor[fused->op_weight_idx[i + woff]]);
+      my_weight_grad_accessor.push_back(
+          weight_grad_accessor[fused->op_weight_idx[i + woff]]);
       assert(my_weight_grad_accessor[i].domain.get_volume() ==
              my_weight_accessor[i].domain.get_volume());
     }
     for (int i = 0; i < fused->op_num_outputs[op]; i++) {
       assert(fused->op_output_source[i + ooff] == SOURCE_OUTPUT);
       int my_off = fused->op_output_idx[i + ooff];
-      my_output_accessor[i] = output_accessor[my_off];
-      my_output_grad_accessor[i] = output_grad_accessor[my_off];
+      my_output_accessor.push_back(output_accessor[my_off]);
+      my_output_grad_accessor.push_back(output_grad_accessor[my_off]);
       assert(my_output_grad_accessor[i].domain == my_output_accessor[i].domain);
     }
     switch (fused->op_op_type[op]) {
@@ -1880,7 +1855,7 @@ __host__ void FusedOp::backward_task(Task const *task,
         int num_inputs = fused->op_num_inputs[op];
         Kernels::Concat::backward_kernel_wrapper(m,
                                                  my_output_grad_accessor[0],
-                                                 my_input_grad_accessor,
+                                                 my_input_grad_accessor.data(),
                                                  num_inputs,
                                                  m->legion_axis);
         break;

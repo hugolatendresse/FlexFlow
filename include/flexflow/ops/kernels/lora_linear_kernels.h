@@ -45,7 +45,9 @@ void inference_kernel_wrapper(LoraLinearMeta *m,
                               BatchConfig const *bc,
                               GenericTensorAccessorR const &input,
                               GenericTensorAccessorW const &output);
-void peft_bwd_kernel_wrapper(LoraLinearMeta *m,
+void peft_bwd_kernel_wrapper(Context ctx,
+                             Runtime *runtime,
+                             LoraLinearMeta *m,
                              BatchConfig const *bc,
                              GenericTensorAccessorW const &input_grad,
                              GenericTensorAccessorR const &output_grad);
@@ -62,7 +64,9 @@ void inference_kernel(LoraLinearMeta *m,
                       int out_dim,
                       ffStream_t stream);
 template <typename DT>
-void peft_bwd_kernel(LoraLinearMeta *m,
+void peft_bwd_kernel(Context ctx,
+                     Runtime *runtime,
+                     LoraLinearMeta *m,
                      BatchConfig const *bc,
                      DT *input_grad_ptr,
                      DT const *output_grad_ptr,

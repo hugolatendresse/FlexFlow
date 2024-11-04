@@ -4,6 +4,8 @@ FROM ${ff_environment_base_image}
 LABEL org.opencontainers.image.source=https://github.com/flexflow/FlexFlow
 LABEL org.opencontainers.image.description="FlexFlow environment container"
 
+SHELL ["/bin/bash", "-c"]
+
 # Install basic dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends wget sudo binutils git zlib1g-dev lsb-release nano gdb libhdf5-dev jq && \
     rm -rf /var/lib/apt/lists/* /etc/apt/sources.list.d/cuda.list /etc/apt/sources.list.d/nvidia-ml.list && \
@@ -53,27 +55,28 @@ ENV CUDA_DIR /usr/local/cuda
 
 # GPU-specific dependencies
 ARG FF_GPU_BACKEND "cuda"
+ARG cuda_version ""
+ARG hip_version "5.6"
 
 # Update NCCL if FF_GPU_BACKEND is cuda
-RUN /bin/bash -c 'if [ "$FF_GPU_BACKEND" = "cuda" ]; then \
-        echo "FF_GPU_BACKEND: ${FF_GPU_BACKEND}. Updating NCCL"; \
-        ubuntu_version=$(lsb_release -rs); \
-        ubuntu_version=${ubuntu_version//./}; \
-        wget "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${ubuntu_version}/x86_64/cuda-keyring_1.0-1_all.deb"; \
-        DEBIAN_FRONTEND=noninteractive dpkg -i cuda-keyring_1.0-1_all.deb; \
-        DEBIAN_FRONTEND=noninteractive apt-get update -y --allow-change-held-packages; \
-        rm -f cuda-keyring_1.0-1_all.deb; \
-        DEBIAN_FRONTEND=noninteractive apt install -y --allow-change-held-packages libnccl2 libnccl-dev; \
-    else \
-        echo "FF_GPU_BACKEND: ${FF_GPU_BACKEND}. Skipping updating NCCL"; \
-    fi'
+# RUN /bin/bash -c 'if [ "$FF_GPU_BACKEND" = "cuda" ]; then \
+#         echo "FF_GPU_BACKEND: ${FF_GPU_BACKEND}. Updating NCCL"; \
+#         ubuntu_version=$(lsb_release -rs); \
+#         ubuntu_version=${ubuntu_version//./}; \
+#         wget "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${ubuntu_version}/x86_64/cuda-keyring_1.0-1_all.deb"; \
+#         DEBIAN_FRONTEND=noninteractive dpkg -i cuda-keyring_1.0-1_all.deb; \
+#         DEBIAN_FRONTEND=noninteractive apt-get update -y --allow-change-held-packages; \
+#         rm -f cuda-keyring_1.0-1_all.deb; \
+#         DEBIAN_FRONTEND=noninteractive apt install -y --allow-change-held-packages libnccl2 libnccl-dev; \
+#     else \
+#         echo "FF_GPU_BACKEND: ${FF_GPU_BACKEND}. Skipping updating NCCL"; \
+#     fi'
 
 # Install hip dependencies if FF_GPU_BACKEND is hip_cuda or hip_rocm
 # Note that amd's docs say to also install the `hip-runtime-nvidia` package. This
 # package attempts to re-install cuda even though cuda is already installed
 # in the container. It also attempts to install packages for a graphical install.
 # For our container, we don't need `hip-runtime-nvidia`
-ARG hip_version "5.6"
 RUN  if [ "$FF_GPU_BACKEND" = "hip_cuda" ] || [ "$FF_GPU_BACKEND" = "hip_rocm" ]; then \
         echo "FF_GPU_BACKEND: ${FF_GPU_BACKEND}. Installing HIP dependencies"; \
         # Check that hip_version is one of 5.3,5.4,5.5,5.6
@@ -106,9 +109,19 @@ RUN rm -rf /var/lib/apt/lists/*
 
 # Install python packages and other dependencies
 RUN conda install -c conda-forge cmake make pillow cmake-build-extension pybind11 numpy pandas keras-preprocessing
-# Install CPU-only Pytorch and related dependencies
-RUN conda install pytorch torchvision torchaudio -c pytorch
-RUN conda install -c conda-forge onnx transformers>=4.31.0 sentencepiece einops
+# Install Pytorch
+COPY docker/flexflow-environment/install_pytorch.sh /usr/local/bin/install_pytorch.sh
+RUN if [ "$FF_GPU_BACKEND" == "cuda" ] ; then \
+        echo "FF_GPU_BACKEND: ${FF_GPU_BACKEND}. Installing PyTorch with CUDA"; \
+        chmod +x /usr/local/bin/install_pytorch.sh && \
+        /usr/local/bin/install_pytorch.sh ${cuda_version}; \
+    else \
+        echo "FF_GPU_BACKEND: ${FF_GPU_BACKEND}. Installing CPU-only PyTorch"; \
+        pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu; \
+    fi
+RUN rm /usr/local/bin/install_pytorch.sh
+# Various dependencies
+RUN pip3 install transformers>=4.31.0 sentencepiece einops
 RUN pip3 install tensorflow notebook
 # PEFT-related
 RUN pip3 install scipy bitsandbytes datasets accelerate loralib triton peft

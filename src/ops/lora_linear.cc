@@ -870,6 +870,7 @@ FutureMap LoraLinear::peft_bwd(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
+  launcher.concurrent = true;
   launcher.add_future(bc);
   launcher.add_region_requirement(
       RegionRequirement(batch_inputs[0]->part_grad,
@@ -1139,7 +1140,7 @@ void LoraLinear::peft_bwd_task(Task const *task,
   int out_dim = output_grad.domain.hi()[0] - output_grad.domain.lo()[0] + 1;
   // int num_infr_tokens = bc->num_active_infr_tokens();
   // int num_peft_tokens = bc->num_active_peft_tokens();
-  peft_bwd_kernel_wrapper(m, bc, input_grad, output_grad);
+  peft_bwd_kernel_wrapper(ctx, runtime, m, bc, input_grad, output_grad);
 
   save_peft_weights_if_needed(m, bc, in_dim, out_dim, shard_id);
 

@@ -604,6 +604,7 @@ void FusedOp::forward(FFModel const &ff) {
                          false /*must*/,
                          0 /*mapper_id*/,
                          outputs[0]->machine_view.hash());
+  launcher.concurrent = true;
   int offset = 0;
   for (int i = 0; i < numInputs; i++) {
     assert(inputs[i]->part != LogicalPartition::NO_PART);
@@ -659,6 +660,7 @@ FutureMap FusedOp::inference(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
+  launcher.concurrent = true;
   launcher.add_future(bc);
   int offset = 0;
   for (int i = 0; i < numInputs; i++) {
@@ -735,6 +737,7 @@ FutureMap FusedOp::peft_bwd(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
+  launcher.concurrent = true;
   launcher.add_future(bc);
   int offset = 0;
   for (int i = 0; i < numInputs; i++) {
@@ -787,6 +790,7 @@ void FusedOp::backward(FFModel const &ff) {
                          false /*must*/,
                          0 /*mapper_id*/,
                          outputs[0]->machine_view.hash());
+  launcher.concurrent = true;
   int idx = 0;
   for (int i = 0; i < numInputs; i++) {
     launcher.add_region_requirement(RegionRequirement(inputs[i]->part,

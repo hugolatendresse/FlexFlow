@@ -439,21 +439,13 @@ __host__ void
         assert(fused->op_num_outputs[op] == 1);
         IncMultiHeadSelfAttentionMeta *m =
             (IncMultiHeadSelfAttentionMeta *)metas->meta[op];
-        assert(fused->op_num_weights[op] ==
-               (1 + (int)(*m->qkv_bias || *m->final_bias)));
-        GenericTensorAccessorR biases;
-        if (*m->qkv_bias || *m->final_bias) {
-          assert(fused->op_num_weights[op] == 2);
-          biases = my_weight_accessor[1];
-        }
+        assert(fused->op_num_weights[op] == 0);
         IncMultiHeadSelfAttention::inference_kernel_wrapper(
             m,
             bc,
             task->index_point.point_data[0],
             my_input_accessor[0],
-            my_weight_accessor[0],
-            my_output_accessor[0],
-            biases);
+            my_output_accessor[0]);
         break;
       }
       case OP_TREE_INC_MULTIHEAD_SELF_ATTENTION: {
@@ -463,21 +455,13 @@ __host__ void
             (TreeIncMultiHeadSelfAttentionMeta *)metas->meta[op];
         TreeVerifyBatchConfig const &tree_bc =
             Future(task->futures[0]).get_result<TreeVerifyBatchConfig>();
-        assert(fused->op_num_weights[op] ==
-               (1 + (int)(*m->qkv_bias || *m->final_bias)));
-        GenericTensorAccessorR biases;
-        if (*m->qkv_bias || *m->final_bias) {
-          assert(fused->op_num_weights[op] == 2);
-          biases = my_weight_accessor[1];
-        }
+        assert(fused->op_num_weights[op] == 0);
         TreeIncMultiHeadSelfAttention::inference_kernel_wrapper(
             m,
             &tree_bc,
             task->index_point.point_data[0],
             my_input_accessor[0],
-            my_weight_accessor[0],
-            my_output_accessor[0],
-            biases);
+            my_output_accessor[0]);
         break;
       }
       case OP_SPEC_INC_MULTIHEAD_SELF_ATTENTION: {
@@ -489,21 +473,13 @@ __host__ void
         //     (BeamSearchBatchConfig *)task->args;
         BeamSearchBatchConfig const &beam_bc =
             Future(task->futures[0]).get_result<BeamSearchBatchConfig>();
-        assert(fused->op_num_weights[op] ==
-               (1 + (int)(*m->qkv_bias || *m->final_bias)));
-        GenericTensorAccessorR biases;
-        if (*m->qkv_bias || *m->final_bias) {
-          assert(fused->op_num_weights[op] == 2);
-          biases = my_weight_accessor[1];
-        }
+        assert(fused->op_num_weights[op] == 0);
         SpecIncMultiHeadSelfAttention::inference_kernel_wrapper(
             m,
             &beam_bc,
             task->index_point.point_data[0],
             my_input_accessor[0],
-            my_weight_accessor[0],
-            my_output_accessor[0],
-            biases);
+            my_output_accessor[0]);
         break;
       }
       case OP_LAYERNORM: {
@@ -636,8 +612,10 @@ __host__ void
         assert(fused->op_num_inputs[op] == 1);
         assert(fused->op_num_outputs[op] == 1);
         AllReduceMeta const *m = (AllReduceMeta *)metas->meta[op];
+        runtime->concurrent_task_barrier(ctx);
         Kernels::AllReduce::inference_kernel_wrapper(
             m, bc, my_input_accessor[0], my_output_accessor[0]);
+        runtime->concurrent_task_barrier(ctx);
         break;
       }
       case OP_PARALLEL_IDENTITY: {
@@ -894,7 +872,12 @@ __host__ void FusedOp::peft_bwd_task(Task const *task,
         // since we ``inplace'' the output for LoRA
         assert(my_input_grad_accessor[1].ptr == my_output_grad_accessor[0].ptr);
         Kernels::LoraLinear::peft_bwd_kernel_wrapper(
-            m, bc, my_input_grad_accessor[0], my_output_grad_accessor[0]);
+            ctx,
+            runtime,
+            m,
+            bc,
+            my_input_grad_accessor[0],
+            my_output_grad_accessor[0]);
         break;
       }
       case OP_BATCHMATMUL: {
@@ -1025,21 +1008,13 @@ __host__ void FusedOp::peft_bwd_task(Task const *task,
         assert(fused->op_num_outputs[op] == 1);
         IncMultiHeadSelfAttentionMeta *m =
             (IncMultiHeadSelfAttentionMeta *)metas->meta[op];
-        assert(fused->op_num_weights[op] ==
-               (1 + (int)(*m->qkv_bias || *m->final_bias)));
-        GenericTensorAccessorR biases;
-        if (*m->qkv_bias || *m->final_bias) {
-          assert(fused->op_num_weights[op] == 2);
-          biases = my_weight_accessor[1];
-        }
+        assert(fused->op_num_weights[op] == 0);
         IncMultiHeadSelfAttention::peft_bwd_kernel_wrapper(
             m,
             bc,
             task->index_point.point_data[0],
             my_input_grad_accessor[0],
-            my_weight_accessor[0],
-            my_output_grad_accessor[0],
-            biases);
+            my_output_grad_accessor[0]);
         break;
       }
       case OP_TREE_INC_MULTIHEAD_SELF_ATTENTION:
@@ -1161,8 +1136,10 @@ __host__ void FusedOp::peft_bwd_task(Task const *task,
         assert(fused->op_num_inputs[op] == 1);
         assert(fused->op_num_outputs[op] == 1);
         ParallelIdentityMeta const *m = (ParallelIdentityMeta *)metas->meta[op];
+        runtime->concurrent_task_barrier(ctx);
         Kernels::ParallelIdentity::peft_bwd_kernel_wrapper(
             m, bc, my_input_grad_accessor[0], my_output_grad_accessor[0]);
+        runtime->concurrent_task_barrier(ctx);
         break;
       }
       default: {

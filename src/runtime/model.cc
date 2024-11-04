@@ -71,7 +71,9 @@
 #include "flexflow/parallel_ops/partition.h"
 #include "flexflow/parallel_ops/reduction.h"
 #include "flexflow/parallel_ops/replicate.h"
+#ifdef FF_BUILD_INFERENCE
 #include "flexflow/request_manager.h"
+#endif
 #include "flexflow/substitution.h"
 #include "flexflow/utils/random_utils.h"
 #include "flexflow/utils/test_utils.h"
@@ -1154,16 +1156,25 @@ bool Op::check_output_input_weight_same_parallel_is() const {
   IndexSpace parallel_is = outputs[0]->parallel_is;
   for (int i = 0; i < numOutputs; i++) {
     if (outputs[i]->parallel_is != parallel_is) {
+      std::cout << "outputs[" << i << "] has different parallel_is "
+                << outputs[i]->parallel_is << " than output[0] " << parallel_is
+                << std::endl;
       return false;
     }
   }
   for (int i = 0; i < numInputs; i++) {
     if (inputs[i]->parallel_is != parallel_is) {
+      std::cout << "inputs[" << i << "] has different parallel_is "
+                << inputs[i]->parallel_is << " than output[0] " << parallel_is
+                << std::endl;
       return false;
     }
   }
   for (int i = 0; i < numWeights; i++) {
     if (weights[i]->parallel_is != parallel_is) {
+      std::cout << "weights[" << i << "] has different parallel_is "
+                << weights[i]->parallel_is << " than output[0] " << parallel_is
+                << std::endl;
       return false;
     }
   }
@@ -1666,6 +1677,7 @@ void FFModel::finish_nccl_comms() {
                                  false /*must*/,
                                  0 /*mapper_id*/,
                                  comm.first);
+    index_launcher.concurrent = true;
     FutureMap fm = runtime->execute_index_space(ctx, index_launcher);
     fm.wait_all_results();
   }
@@ -3412,26 +3424,28 @@ bool FFModel::need_to_add_allreduce(int layer_idx) const {
   auto const &l = layers[layer_idx];
   if (config.computationMode == COMP_MODE_INFERENCE &&
       config.tensor_parallelism_degree > 1 &&
-      (l->op_type == OP_INC_MULTIHEAD_SELF_ATTENTION ||
-       l->op_type == OP_TREE_INC_MULTIHEAD_SELF_ATTENTION ||
-       // mlp layer
-       is_mlp_block(layer_idx) ||
-       // llama mlp layer
-       (l->op_type == OP_LINEAR && layer_idx >= 2 &&
-        layers[layer_idx - 1]->op_type == OP_GELU &&
-        layers[layer_idx - 2]->op_type == OP_LINEAR) ||
-       // LLAMA without element-wise operator fusion
-       (l->op_type == OP_LINEAR && layer_idx >= 5 &&
-        layers[layer_idx - 1]->op_type == OP_EW_MUL &&
-        layers[layer_idx - 2]->op_type == OP_EW_MUL &&
-        layers[layer_idx - 3]->op_type == OP_SIGMOID &&
-        layers[layer_idx - 4]->op_type == OP_LINEAR &&
-        layers[layer_idx - 5]->op_type == OP_LINEAR) ||
-       // LLAMA with element-wise operator fusion
-       (l->op_type == OP_LINEAR && layer_idx >= 3 &&
-        layers[layer_idx - 1]->op_type == OP_SIGMOID_SILU_MULTI &&
-        layers[layer_idx - 2]->op_type == OP_LINEAR &&
-        layers[layer_idx - 3]->op_type == OP_LINEAR))) {
+      (
+          //  l->op_type == OP_INC_MULTIHEAD_SELF_ATTENTION ||
+          //  l->op_type == OP_TREE_INC_MULTIHEAD_SELF_ATTENTION ||
+          (std::string(l->name).find("attn.o_proj") != std::string::npos) ||
+          // mlp layer
+          is_mlp_block(layer_idx) ||
+          // llama mlp layer
+          (l->op_type == OP_LINEAR && layer_idx >= 2 &&
+           layers[layer_idx - 1]->op_type == OP_GELU &&
+           layers[layer_idx - 2]->op_type == OP_LINEAR) ||
+          // LLAMA without element-wise operator fusion
+          (l->op_type == OP_LINEAR && layer_idx >= 5 &&
+           layers[layer_idx - 1]->op_type == OP_EW_MUL &&
+           layers[layer_idx - 2]->op_type == OP_EW_MUL &&
+           layers[layer_idx - 3]->op_type == OP_SIGMOID &&
+           layers[layer_idx - 4]->op_type == OP_LINEAR &&
+           layers[layer_idx - 5]->op_type == OP_LINEAR) ||
+          // LLAMA with element-wise operator fusion
+          (l->op_type == OP_LINEAR && layer_idx >= 3 &&
+           layers[layer_idx - 1]->op_type == OP_SIGMOID_SILU_MULTI &&
+           layers[layer_idx - 2]->op_type == OP_LINEAR &&
+           layers[layer_idx - 3]->op_type == OP_LINEAR))) {
     return true;
   }
   return false;
@@ -4684,6 +4698,7 @@ void register_flexflow_internal_tasks(Runtime *runtime,
           registrar);
     }
   }
+#ifdef FF_BUILD_INFERENCE
   // RequestManager load_tokens
   {
     TaskVariantRegistrar registrar(RM_LOAD_TOKENS_TASK_ID,
@@ -4837,6 +4852,7 @@ void register_flexflow_internal_tasks(Runtime *runtime,
           registrar);
     }
   }
+#endif
   // ElementUnary task
   {
     TaskVariantRegistrar registrar(ELEMENTUNARY_INIT_TASK_ID,
@@ -6915,6 +6931,8 @@ void register_flexflow_internal_tasks(Runtime *runtime,
                                    "LoraLinear PEFT Backward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<LoraLinear::peft_bwd_task>(
           registrar, "LoraLinear PEFT Backward Task");
@@ -6960,6 +6978,8 @@ void register_flexflow_internal_tasks(Runtime *runtime,
     TaskVariantRegistrar registrar(FUSEDOP_INF_TASK_ID, "FusedOp Inference");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<FusedOp::inference_task>(
           registrar, "FusedOp Inference Task");
@@ -6975,6 +6995,8 @@ void register_flexflow_internal_tasks(Runtime *runtime,
                                    "FusedOp PEFT Backward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<FusedOp::peft_bwd_task>(
           registrar, "FusedOp PEFT Backward Task");
@@ -6990,6 +7012,8 @@ void register_flexflow_internal_tasks(Runtime *runtime,
     TaskVariantRegistrar registrar(FUSEDOP_FWD_TASK_ID, "FusedOp Forward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<FusedOp::forward_task>(
           registrar, "FusedOp Forward Task");
@@ -7004,6 +7028,8 @@ void register_flexflow_internal_tasks(Runtime *runtime,
     TaskVariantRegistrar registrar(FUSEDOP_BWD_TASK_ID, "FusedOp Backward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<FusedOp::backward_task>(
           registrar, "FusedOp Backward Task");
@@ -7254,6 +7280,10 @@ void register_flexflow_internal_tasks(Runtime *runtime,
     TaskVariantRegistrar registrar(ALLREDUCE_FWD_TASK_ID, "AllReduce Forward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    // AllReduce forward and backward must run concurrently since they
+    // use ncclAllReduce internally
+    registrar.set_concurrent();
+    // registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<AllReduce::forward_task>(
           registrar, "AllReduce Forward Task");
@@ -7283,6 +7313,10 @@ void register_flexflow_internal_tasks(Runtime *runtime,
                                    "AllReduce Inference");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    // AllReduce forward and backward must run concurrently since they
+    // use ncclAllReduce internally
+    registrar.set_concurrent();
+    // registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<AllReduce::inference_task>(
           registrar, "AllReduce Inference Task");
@@ -7345,6 +7379,8 @@ void register_flexflow_internal_tasks(Runtime *runtime,
                                    "ParallelIdentity Backward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    // registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<ParallelIdentity::backward_task>(
           registrar, "ParallelIdentity Backward Task");
@@ -7377,6 +7413,8 @@ void register_flexflow_internal_tasks(Runtime *runtime,
                                    "ParallelIdentity PEFT Backward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    // registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<ParallelIdentity::peft_bwd_task>(
           registrar, "ParallelIdentity PEFT Backward Task");
@@ -7395,6 +7433,8 @@ void register_flexflow_internal_tasks(Runtime *runtime,
                                    "FusedParallel Forward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<FusedParallelOp::forward_task>(
           registrar, "FusedParallel Forward Task");
@@ -7410,6 +7450,8 @@ void register_flexflow_internal_tasks(Runtime *runtime,
                                    "FusedParallel Backward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<FusedParallelOp::backward_task>(
           registrar, "FusedParallel Backward Task");
@@ -7443,12 +7485,13 @@ void register_flexflow_internal_tasks(Runtime *runtime,
     registrar.set_leaf();
     if (pre_register) {
       Runtime::preregister_task_variant<AdamOptimizer::ps_update_task>(
-          registrar, "Adam Parameter Server Update Task");
+          registrar, "Adam Parameter Server Update Task", 111 /*variant ID*/);
     } else {
       if (enable_control_replication) {
         registrar.global_registration = false;
       }
-      runtime->register_task_variant<AdamOptimizer::ps_update_task>(registrar);
+      runtime->register_task_variant<AdamOptimizer::ps_update_task>(
+          registrar, 111 /*variant ID*/);
     }
   }
 #ifdef FF_USE_NCCL
@@ -7457,29 +7500,33 @@ void register_flexflow_internal_tasks(Runtime *runtime,
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
     registrar.set_concurrent();
+    registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<SGDOptimizer::nccl_update_task>(
-          registrar, "SGD NCCL Update Task");
+          registrar, "SGD NCCL Update Task", 111 /*variant ID*/);
     } else {
       if (enable_control_replication) {
         registrar.global_registration = false;
       }
-      runtime->register_task_variant<SGDOptimizer::nccl_update_task>(registrar);
+      runtime->register_task_variant<SGDOptimizer::nccl_update_task>(
+          registrar, 111 /*variant ID*/);
     }
   }
   {
     TaskVariantRegistrar registrar(ADAM_UPD_NCCL_TASK_ID, "Adam NCCL Update");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<AdamOptimizer::nccl_update_task>(
-          registrar, "Adam NCCL Update Task");
+          registrar, "Adam NCCL Update Task", 111 /*variant ID*/);
     } else {
       if (enable_control_replication) {
         registrar.global_registration = false;
       }
       runtime->register_task_variant<AdamOptimizer::nccl_update_task>(
-          registrar);
+          registrar, 111 /*variant ID*/);
     }
   }
 #endif
@@ -7608,15 +7655,16 @@ void register_flexflow_internal_tasks(Runtime *runtime,
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
     registrar.set_concurrent();
+    // registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<ncclComm_t, Op::init_nccl_comms_task>(
-          registrar, "NCCL Init Communicators Task");
+          registrar, "NCCL Init Communicators Task", 111 /*variant ID*/);
     } else {
       if (enable_control_replication) {
         registrar.global_registration = false;
       }
       runtime->register_task_variant<ncclComm_t, Op::init_nccl_comms_task>(
-          registrar);
+          registrar, 111 /*variant ID*/);
     }
   }
   {
@@ -7624,14 +7672,17 @@ void register_flexflow_internal_tasks(Runtime *runtime,
                                    "NCCL Finish Communicators");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
+    registrar.set_concurrent();
+    // registrar.set_concurrent_barrier();
     if (pre_register) {
       Runtime::preregister_task_variant<Op::finish_nccl_comms_task>(
-          registrar, "NCCL Finish Communicators Task");
+          registrar, "NCCL Finish Communicators Task", 111 /*variant ID*/);
     } else {
       if (enable_control_replication) {
         registrar.global_registration = false;
       }
-      runtime->register_task_variant<Op::finish_nccl_comms_task>(registrar);
+      runtime->register_task_variant<Op::finish_nccl_comms_task>(
+          registrar, 111 /*variant ID*/);
     }
   }
 #endif

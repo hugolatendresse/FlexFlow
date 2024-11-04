@@ -27,15 +27,18 @@ from flexflow.serve.models import (
     MPTConfig,
 )
 from flexflow.core import *
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel, PeftConfig, LoraConfig
 from huggingface_hub import HfApi
 import torch, shutil, hashlib, json, gc
 from typing import Union, List
+from huggingface_hub import snapshot_download
 
 
 class _SupportedModels:
-    def __init__(self,):
+    def __init__(
+        self,
+    ):
         self.supported_models = {
             "LlamaForCausalLM": (ModelType.LLAMA, FlexFlowLLAMA, LLAMAConfig),
             "LLaMAForCausalLM": (ModelType.LLAMA, FlexFlowLLAMA, LLAMAConfig),
@@ -101,6 +104,7 @@ class LLM:
         self.output_file = output_file
         self.rm = None
         self.pefts = {}
+        self.tokenizer=None
 
     def __del__(self):
         # Stop the background server before deleting the object
@@ -292,8 +296,8 @@ class LLM:
 
                     weights_path = get_weights_path(peft_model_id)
                     refresh_cache_if_needed(peft_model_id)
-                    ff_revision, ff_revision_file, latest_revision = self.__get_revision_hashes(
-                        peft_model_id, weights_path
+                    ff_revision, ff_revision_file, latest_revision = (
+                        self.__get_revision_hashes(peft_model_id, weights_path)
                     )
 
                     if ff_revision != latest_revision:
@@ -349,10 +353,25 @@ class LLM:
             print(
                 f"'{self.model_name}' tokenizer needs updating! Downloading tokenizer now..."
             )
-            # Download tokenizer from HuggingFace, or load it from the local folder
-            hf_tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
-            # Save tokenizer
-            hf_tokenizer.save_pretrained(self.tokenizer_path)
+            # Load/download the tokenizer files
+            target_tokenizer_files = [
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "special_tokens_map.json",
+                "vocab.json",
+                "merges.txt",
+            ]
+            if os.path.exists(self.model_name):
+                hf_tokenizer_path = self.model_name
+            else:
+                hf_tokenizer_path = snapshot_download(
+                    repo_id=self.model_name, allow_patterns=target_tokenizer_files
+                )
+            for file in target_tokenizer_files:
+                src_path = os.path.join(hf_tokenizer_path, file)
+                dst_path = os.path.join(self.tokenizer_path, file)
+                if os.path.exists(src_path):
+                    shutil.copy(src_path, dst_path)
             print("Done updating HF tokenizer.")
             # Save new revision hash to file
             with open(ff_revision_file, "w+") as f:
@@ -417,6 +436,8 @@ class LLM:
                 model_specific_pipeline_parallelism_degree
             )
 
+        self.max_seq_length = max_seq_length
+
         # Create request manager and set serving configuration
         self.rm = RequestManager()
         self.rm.set_max_requests_per_batch(max_requests_per_batch)
@@ -473,6 +494,10 @@ class LLM:
         eos_token_id = (
             -1 if self.hf_config.eos_token_id is None else self.hf_config.eos_token_id
         )
+        if type(eos_token_id) == int:
+            eos_token_id = [eos_token_id]
+        elif type(eos_token_id) != list:
+            raise ValueError("eos_token_id must be an integer or a list of integers")
         self.rm.register_tokenizer(
             self.model_type, bos_token_id, eos_token_id, self.tokenizer_path
         )
@@ -496,11 +521,64 @@ class LLM:
 
             atexit.register(self.rm.stop_server)
 
+    def _generate(self, requests: List[Request]):
+        if len(requests) == 0:
+            return []
+        for req in requests:
+            if req.req_type == RequestType.REQ_INFERENCE:
+                # check max_length and max_new_tokens parameters
+                if req.max_length == -1 and req.max_new_tokens == -1:
+                    req.max_length = self.max_seq_length -1
+                elif req.max_length != -1 and req.max_new_tokens != -1:
+                    warnings.warn(
+                        f"Both `max_new_tokens` (={req.max_new_tokens}) and `max_length`(={req.max_length}) seem to have been set. `max_new_tokens` will take precedence."
+                    )
+                    req.max_length = -1
+                if (
+                    req.max_length >= self.max_seq_length
+                    or req.max_new_tokens >= self.max_seq_length
+                ):
+                    raise ValueError(
+                        f"max_length ({req.max_length}) or max_new_tokens ({req.max_new_tokens}) exceeds the maximum sequence length ({self.max_seq_length})"
+                    )
+            else:
+                if req.max_new_tokens != -1:
+                    raise ValueError(
+                        f"max_new_tokens ({req.max_new_tokens}) is not allowed for finetuning requests."
+                    )
+                if req.max_length == -1:
+                    req.max_length = self.max_seq_length -1
+                if req.max_length >= self.max_seq_length:
+                    raise ValueError(
+                        f"max_length ({req.max_length}) exceeds the maximum sequence length ({self.max_seq_length})"
+                    )
+        return self.model.ffmodel.generate(requests)
+
+    def __chat2prompt(self, messages: List[dict]):
+        """Convert a list of messages to a single prompt string
+
+        :param messages: The list of messages to convert
+        :type messages: List[dict]
+        :return: The prompt string
+        :rtype: str
+        """
+        # ensure that each element is a dictionary, containing the "role" and "content" keys
+        for message in messages:
+            if type(message) != dict or "role" not in message or "content" not in message:
+                raise ValueError(
+                    "Each element in the list must be a dictionary with the keys 'role' and 'content'"
+                )
+        if self.tokenizer is None:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        if self.tokenizer.chat_template is None:
+            raise ValueError(f"Model {self.model_name} does not support chat completion")
+        return self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
     def generate(
         self,
-        requests_or_prompts: Union[str, List[str], Request, List[Request]],
+        requests_or_prompts: Union[str, List[str], List[dict], Request, List[Request]],
         max_length: int = -1,
-        max_new_tokens: int = 128,
+        max_new_tokens: int = -1,
     ):
         """Generate tokens based on the input prompt(s)
 
@@ -515,24 +593,58 @@ class LLM:
         """
         if type(requests_or_prompts) == str:
             if len(requests_or_prompts) == 0:
-                return None
-            return self.model.ffmodel.generate_inf_only(
-                [requests_or_prompts], max_length, max_new_tokens
+                return []
+            request = Request(
+                req_type=RequestType.REQ_INFERENCE,
+                prompt=requests_or_prompts,
+                max_length=max_length,
+                max_new_tokens=max_new_tokens,
             )
+            return self._generate([request])
         elif type(requests_or_prompts) == Request:
-            return self.model.ffmodel.generate(requests_or_prompts)
+            return self._generate([requests_or_prompts])
         elif type(requests_or_prompts) == list:
             if len(requests_or_prompts) == 0:
                 return []
             if type(requests_or_prompts[0]) == str:
-                return self.model.ffmodel.generate_inf_only(
-                    requests_or_prompts, max_length, max_new_tokens
+                requests = [
+                    Request(
+                        req_type=RequestType.REQ_INFERENCE,
+                        prompt=req,
+                        max_length=max_length,
+                        max_new_tokens=max_new_tokens,
+                    )
+                    for req in requests_or_prompts
+                ]
+                return self._generate(requests)
+            elif type(requests_or_prompts[0]) == dict:
+                prompt = self.__chat2prompt(requests_or_prompts)
+                request = Request(
+                    req_type=RequestType.REQ_INFERENCE,
+                    prompt=prompt,
+                    max_length=max_length,
+                    max_new_tokens=max_new_tokens,
+                    add_special_tokens=False,
                 )
-            else:
+                return self._generate([request])
+            elif type(requests_or_prompts[0]) == list:
+                prompts = [self.__chat2prompt(messages) for messages in requests_or_prompts]
+                requests = [
+                    Request(
+                        req_type=RequestType.REQ_INFERENCE,
+                        prompt=prompt,
+                        max_length=max_length,
+                        max_new_tokens=max_new_tokens,
+                        add_special_tokens=False,
+                    )
+                    for prompt in prompts
+                ]
+                return self._generate(requests)
+            elif type(requests_or_prompts[0]) == Request:
                 print(requests_or_prompts)
-                return self.model.ffmodel.generate(requests_or_prompts)
+                return self._generate(requests_or_prompts)
         else:
-            assert False, "Please pass a non-empty string or list of strings"
+            assert False, "Please pass a string, list of strings, Request, or list of Requests"
 
     def start_server(self):
         self.rm.start_server(self.model.ffmodel)
