@@ -63,6 +63,7 @@ void PEFTMemoryManager::get_finetuning_slot(PEFTModelID const &model_id,
   assert(finetuning_ptr != nullptr &&
          "PEFT Memory Manager finetuning_ptr is null");
   *cache_miss = (model_id.id != finetuning_model_id.id);
+  finetuning_model_id = model_id;
 }
 
 int PEFTMemoryManager::get_inference_peft_slot(PEFTModelID const &model_id,
