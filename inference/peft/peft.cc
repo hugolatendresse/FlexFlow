@@ -275,7 +275,8 @@ void FlexFlow::top_level_task(Task const *task,
   rm->set_max_requests_per_batch(
       max_requests_per_batch +
       (int)enable_peft_finetuning); // add one slot for finetuning if needed
-  rm->set_max_concurrent_adapters(max_requests_per_batch + (int)enable_peft_finetuning);
+  rm->set_max_concurrent_adapters(max_requests_per_batch +
+                                  (int)enable_peft_finetuning);
   rm->set_max_tokens_per_batch(max_tokens_per_batch);
   rm->set_max_sequence_length(max_sequence_length);
   rm->register_tokenizer(

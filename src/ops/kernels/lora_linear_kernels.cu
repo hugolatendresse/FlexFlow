@@ -335,8 +335,10 @@ void inference_kernel(LoraLinearMeta *m,
     if (bc->requestsInfo[i].peft_bwd) {
       num_peft_requests++;
     }
-    std::string peft_model_config_str = std::string(bc->requestsInfo[i].peft_model_config_str);
-    LoraLinearConfig lora_config = LoraLinearConfig::deserialize_from_json_string(peft_model_config_str);
+    std::string peft_model_config_str =
+        std::string(bc->requestsInfo[i].peft_model_config_str);
+    LoraLinearConfig lora_config =
+        LoraLinearConfig::deserialize_from_json_string(peft_model_config_str);
     if (!lora_applies_to_this_layer(m, lora_config)) {
       continue;
     }
@@ -462,8 +464,10 @@ void peft_bwd_kernel(Context ctx,
         !bc->requestsInfo[i].peft_bwd) {
       continue;
     }
-    std::string peft_model_config_str = std::string(bc->requestsInfo[i].peft_model_config_str);
-    LoraLinearConfig lora_config = LoraLinearConfig::deserialize_from_json_string(peft_model_config_str);
+    std::string peft_model_config_str =
+        std::string(bc->requestsInfo[i].peft_model_config_str);
+    LoraLinearConfig lora_config =
+        LoraLinearConfig::deserialize_from_json_string(peft_model_config_str);
     if (!lora_applies_to_this_layer(m, lora_config)) {
       continue;
     }

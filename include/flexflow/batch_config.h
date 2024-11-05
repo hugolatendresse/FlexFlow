@@ -22,7 +22,6 @@
 #include <cstdlib>
 #include <cstring>
 
-
 // #define MAX_SEQ_LEN 1024
 // #define BATCH_SIZE 2
 // #define BATCH_SIZE 16
