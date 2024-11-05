@@ -20,6 +20,8 @@
 #include "legion.h"
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
+
 
 // #define MAX_SEQ_LEN 1024
 // #define BATCH_SIZE 2
@@ -79,6 +81,7 @@ public:
   static int const MAX_NUM_REQUESTS = 65;
   static int const MAX_NUM_TOKENS = 1024;
   static int const MAX_SPEC_TREE_TOKEN_NUM = 64;
+  static int const MAX_PEFT_CONFIG_SIZE = 1024;
 
   //  Set by update
 
@@ -99,6 +102,7 @@ public:
       batch_config_request_id = -1;
       peft_bwd = false;
       optimizer_tasks = {true, false, false, false};
+      std::memset(peft_model_config_str, 0, MAX_PEFT_CONFIG_SIZE);
     }
     int first_token_depth_in_request;
     int first_token_offset_in_batch;
@@ -111,7 +115,7 @@ public:
     RequestGuid request_guid;
     // PEFT fields
     PEFTModelID peft_model_id;
-    std::string peft_model_config;
+    char peft_model_config_str[MAX_PEFT_CONFIG_SIZE];
     bool peft_bwd;
     OptimizerTasks optimizer_tasks;
   };

@@ -235,12 +235,23 @@ std::ostream &operator<<(std::ostream &os, LoraLinearConfig const &llc) {
   return os;
 }
 
+double ToThreeDecimalPlaces(float f) {
+  double d = static_cast<double>(f);
+  int i;
+  if (d >= 0) {
+    i = static_cast<int>(d * 1000 + 0.5);
+  } else {
+    i = static_cast<int>(d * 1000 - 0.5);
+  }
+  return (i / 1000.0);
+}
+
 std::string LoraLinearConfig::serialize_to_json_string(int indent) const {
   nlohmann::json j = {{"cache_folder", cache_folder},
                       {"peft_model_id", peft_model_id},
                       {"rank", rank},
-                      {"lora_alpha", lora_alpha},
-                      {"lora_dropout", lora_dropout},
+                      {"lora_alpha", ToThreeDecimalPlaces(lora_alpha)},
+                      {"lora_dropout", ToThreeDecimalPlaces(lora_dropout)},
                       {"target_modules", target_modules},
                       {"trainable", trainable},
                       {"init_lora_weights", init_lora_weights},
@@ -264,12 +275,18 @@ void LoraLinearConfig::serialize_to_json_file(
 // Deserialization method
 LoraLinearConfig LoraLinearConfig::deserialize_from_json_string(
     std::string const &json_string) {
+  // std::cout << "Attempting to deserialize from JSON string: " << json_string
+  //           << std::endl;
   nlohmann::json j = nlohmann::json::parse(json_string);
+  LoraOptimizerConfig *optimizer_config_ = nullptr;
+  if (!j["optimizer_config"].is_null()) {
+    optimizer_config_ = LoraOptimizerConfig::fromJson(j["optimizer_config"]);
+  }
   LoraLinearConfig config(
       j["cache_folder"].get<std::string>(),
       j["peft_model_id"].get<std::string>(),
       j["trainable"].get<bool>(),
-      nullptr, // optimizer_config will be set later if present
+      optimizer_config_, // optimizer_config will be set later if present
       j["init_lora_weights"].get<bool>(),
       j["base_model_name_or_path"].get<std::string>(),
       j["precision"].get<std::string>(),
@@ -277,10 +294,6 @@ LoraLinearConfig LoraLinearConfig::deserialize_from_json_string(
       j["lora_alpha"].get<float>(),
       j["lora_dropout"].get<float>(),
       j["target_modules"].get<std::vector<std::string>>());
-  if (!j["optimizer_config"].is_null()) {
-    config.optimizer_config =
-        LoraOptimizerConfig::fromJson(j["optimizer_config"]);
-  }
   return config;
 }
 

@@ -691,6 +691,12 @@ void RequestManager::check_batch(BatchConfig const &old_bc,
   }
 }
 
+void RequestManager::add_peft_config_to_request_info(BatchConfig &bc, int req_idx, LoraLinearConfig const &peft_config) {
+  std::memset(bc.requestsInfo[req_idx].peft_model_config_str, 0, BatchConfig::MAX_PEFT_CONFIG_SIZE);
+  std::string peft_config_str = peft_config.serialize_to_json_string();
+  std::strcpy(bc.requestsInfo[req_idx].peft_model_config_str, peft_config_str.c_str());
+}
+
 BatchConfig RequestManager::prepare_next_batch(BatchConfig const &old_bc,
                                                InferenceResult const &result) {
   const std::lock_guard<std::mutex> lock(request_queue_mutex);
@@ -825,8 +831,7 @@ BatchConfig RequestManager::prepare_next_batch(BatchConfig const &old_bc,
             old_bc.requestsInfo[i].request_guid;
         new_bc.requestsInfo[i].peft_model_id =
             old_bc.requestsInfo[i].peft_model_id;
-        new_bc.requestsInfo[i].peft_model_config =
-            old_bc.requestsInfo[i].peft_model_config;
+        std::strcpy(new_bc.requestsInfo[i].peft_model_config_str, old_bc.requestsInfo[i].peft_model_config_str);
         if (old_bc.requestsInfo[i].peft_model_id != PEFTModelID::NO_ID) {
           num_concurrent_adapters += 1;
         }
@@ -911,9 +916,7 @@ BatchConfig RequestManager::prepare_next_batch(BatchConfig const &old_bc,
         new_bc.requestsInfo[i].max_length = new_request.max_length;
         new_bc.requestsInfo[i].peft_model_id = new_request.peft_model_id;
         if (new_request.peft_model_id != PEFTModelID::NO_ID) {
-          new_bc.requestsInfo[i].peft_model_config =
-              get_peft_config(new_request.peft_model_id)
-                  .serialize_to_json_string();
+          add_peft_config_to_request_info(new_bc, i, get_peft_config(new_request.peft_model_id));
         }
         new_bc.requestsInfo[i].peft_bwd = false;
         new_bc.request_completed[i] = false;
@@ -1084,9 +1087,7 @@ BatchConfig RequestManager::prepare_next_batch(BatchConfig const &old_bc,
       new_bc.requestsInfo[inference_batch_size].request_guid = request.guid;
       new_bc.requestsInfo[inference_batch_size].peft_model_id =
           request.peft_model_id;
-      new_bc.requestsInfo[inference_batch_size].peft_model_config =
-          get_peft_config(request.peft_model_id).serialize_to_json_string();
-      new_bc.requestsInfo[inference_batch_size].peft_bwd = true;
+      add_peft_config_to_request_info(new_bc, inference_batch_size, get_peft_config(request.peft_model_id));
       set_optimizer_tasks(
           new_bc.requestsInfo[inference_batch_size].optimizer_tasks,
           request.max_training_steps,

@@ -619,9 +619,8 @@ void LoraLinear::inference_task(Task const *task,
           bc->requestsInfo[i].peft_model_id == PEFTModelID::NO_ID) {
         continue;
       }
-      LoraLinearConfig lora_config =
-          LoraLinearConfig::deserialize_from_json_string(
-              bc->requestsInfo[i].peft_model_config);
+      std::string peft_model_config_str = std::string(bc->requestsInfo[i].peft_model_config_str);
+      LoraLinearConfig lora_config = LoraLinearConfig::deserialize_from_json_string(peft_model_config_str);
       if (!lora_applies_to_this_layer(m, lora_config)) {
         continue;
       }
@@ -777,9 +776,8 @@ void lora_inference_debugging(LoraLinearMeta *m,
         !bc->requestsInfo[i].peft_bwd) {
       continue;
     }
-    LoraLinearConfig lora_config =
-        LoraLinearConfig::deserialize_from_json_string(
-            bc->requestsInfo[i].peft_model_config);
+    std::string peft_model_config_str = std::string(bc->requestsInfo[i].peft_model_config_str);
+    LoraLinearConfig lora_config = LoraLinearConfig::deserialize_from_json_string(peft_model_config_str);
     if (!lora_applies_to_this_layer(m, lora_config)) {
       continue;
     }
@@ -911,9 +909,8 @@ void save_peft_weights_if_needed(LoraLinearMeta *m,
         !bc->requestsInfo[i].peft_bwd) {
       continue;
     }
-    LoraLinearConfig lora_config =
-        LoraLinearConfig::deserialize_from_json_string(
-            bc->requestsInfo[i].peft_model_config);
+    std::string peft_model_config_str = std::string(bc->requestsInfo[i].peft_model_config_str);
+    LoraLinearConfig lora_config = LoraLinearConfig::deserialize_from_json_string(peft_model_config_str);
     if (!lora_applies_to_this_layer(m, lora_config)) {
       continue;
     }

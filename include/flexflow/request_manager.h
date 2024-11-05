@@ -189,6 +189,7 @@ public:
   bool is_eos_token(int token_id);
   bool check_inf_req_completion(BatchConfig const &old_bc, int i);
   void check_batch(BatchConfig const &old_bc, BatchConfig const &new_bc);
+  void add_peft_config_to_request_info(BatchConfig &bc, int req_idx, LoraLinearConfig const &peft_config);
   BatchConfig prepare_next_batch(BatchConfig const &bc,
                                  InferenceResult const &result);
   BatchConfigFuture prepare_next_batch(BatchConfigFuture const &bc,
@@ -300,7 +301,7 @@ private:
 
   // peft
   std::unordered_map<PEFTModelID, LoraLinearConfig> peft_configs;
-  int max_lora_rank=0;
+  int max_lora_rank=32;
   int max_concurrent_adapters=0;
   // peft benchmarking
   bool enable_peft_finetuning = false;
