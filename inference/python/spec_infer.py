@@ -56,7 +56,6 @@ def get_configs():
             "use_8bit_quantization": False,
             "enable_peft": False,
             "peft_activation_reserve_space_size": 1024,  # 1GB
-            "peft_weight_reserve_space_size": 1024,  # 1GB
             "profiling": False,
             "benchmarking": False,
             "inference_debugging": False,

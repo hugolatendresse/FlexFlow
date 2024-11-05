@@ -47,7 +47,6 @@ configs_dict = {
     "use_8bit_quantization": False,
     "enable_peft": True,
     "peft_activation_reserve_space_size": 1024,  # 1GB
-    "peft_weight_reserve_space_size": 1024,  # 1GB
     "profiling": False,
     "inference_debugging": False,
     "fusion": False,

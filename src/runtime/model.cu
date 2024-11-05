@@ -168,7 +168,7 @@ FFHandler
   } else {
     handle.batch_config_metadata = nullptr;
   }
-#ifdef DEADCODE
+// #ifdef DEADCODE
   if (info->peft_activation_reserve_space_size > 0) {
     // allocate memory for peft activation reserve space
     Memory gpu_mem = Machine::MemoryQuery(Machine::get_machine())
@@ -182,33 +182,7 @@ FFHandler
   } else {
     handle.peft_activation_allocator = nullptr;
   }
-
-  if (info->peft_weight_reserve_space_size > 0) {
-    // allocate memory for peft weight reserve space
-    Memory gpu_mem = Machine::MemoryQuery(Machine::get_machine())
-                         .only_kind(Memory::GPU_FB_MEM)
-                         .best_affinity_to(task->target_proc)
-                         .first();
-    Realm::Rect<1, coord_t> bounds(
-        Realm::Point<1, coord_t>(0),
-        Realm::Point<1, coord_t>(info->peft_weight_reserve_space_size - 1));
-    std::vector<size_t> field_sizes;
-    field_sizes.push_back(sizeof(char));
-    Realm::RegionInstance workspaceInst;
-    Realm::RegionInstance::create_instance(workspaceInst,
-                                           gpu_mem,
-                                           bounds,
-                                           field_sizes,
-                                           0,
-                                           Realm::ProfilingRequestSet())
-        .wait();
-    void *ptr = workspaceInst.pointer_untyped(0, sizeof(char));
-    handle.peft_weight_allocator =
-        new PEFTWeightAllocator(ptr, info->peft_weight_reserve_space_size);
-  } else {
-    handle.peft_weight_allocator = nullptr;
-  }
-#endif
+// #endif
   // checkCUDA(cudaMalloc(&handle.workSpace, handle.workSpaceSize));
 #ifdef FF_USE_NCCL
   handle.ncclComm = NULL;

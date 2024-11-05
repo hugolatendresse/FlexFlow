@@ -1550,8 +1550,6 @@ FFRuntime::FFRuntime(FFConfig &config) {
         config.cpu_offload ? config.offload_reserve_space_size : 0;
     info.peft_activation_reserve_space_size =
         config.enable_peft ? config.peft_activation_reserve_space_size : 0;
-    info.peft_weight_reserve_space_size =
-        config.enable_peft ? config.peft_weight_reserve_space_size : 0;
     info.quantization_type = config.quantization_type;
     info.allowTensorOpMathConversion = config.allow_tensor_op_math_conversion;
     argmap.set_point(*it, TaskArgument(&info, sizeof(FFInitInfo)));
@@ -4400,7 +4398,6 @@ FFConfig::FFConfig() {
   enable_peft = DefaultConfig::enablePeft;
   peft_activation_reserve_space_size =
       DefaultConfig::peftActivationReserveSpaceSize;
-  peft_weight_reserve_space_size = DefaultConfig::peftWeightReserveSpaceSize;
   quantization_type = DT_NONE;
   only_data_parallel = DefaultConfig::onlyDataParallel;
   data_parallelism_degree = 1;
@@ -4533,10 +4530,6 @@ void FFConfig::parse_args(char **argv, int argc) {
     }
     if (!strcmp(argv[i], "-peft-activation-reserve-space-size")) {
       peft_activation_reserve_space_size = atoll(argv[++i]) * 1024 * 1024;
-      continue;
-    }
-    if (!strcmp(argv[i], "-peft-weight-reserve-space-size")) {
-      peft_weight_reserve_space_size = atoll(argv[++i]) * 1024 * 1024;
       continue;
     }
     if ((!strcmp(argv[i], "--only-data-parallel"))) {
