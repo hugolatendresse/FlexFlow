@@ -12,8 +12,7 @@ namespace FlexFlow {
 // empty optimizer
 LoraOptimizerConfig::LoraOptimizerConfig() {}
 
-std::unique_ptr<LoraOptimizerConfig>
-    LoraOptimizerConfig::fromJson(nlohmann::json const &j) {
+LoraOptimizerConfig *LoraOptimizerConfig::fromJson(nlohmann::json const &j) {
   std::string type = j["type"];
   if (type == "SGD") {
     return LoraSGDOptimizerConfig::fromJson(j);
@@ -50,9 +49,9 @@ nlohmann::json LoraSGDOptimizerConfig::toJson() const {
           {"weight_decay", weight_decay}};
 }
 
-std::unique_ptr<LoraSGDOptimizerConfig>
+LoraSGDOptimizerConfig *
     LoraSGDOptimizerConfig::fromJson(nlohmann::json const &j) {
-  auto sgd = std::make_unique<LoraSGDOptimizerConfig>();
+  LoraSGDOptimizerConfig *sgd = new LoraSGDOptimizerConfig();
   sgd->lr = j["lr"];
   sgd->momentum = j["momentum"];
   sgd->nesterov = j["nesterov"];
@@ -89,9 +88,9 @@ nlohmann::json LoraAdamOptimizerConfig::toJson() const {
           {"epsilon", epsilon}};
 }
 
-std::unique_ptr<LoraAdamOptimizerConfig>
+LoraAdamOptimizerConfig *
     LoraAdamOptimizerConfig::fromJson(nlohmann::json const &j) {
-  auto adam = std::make_unique<LoraAdamOptimizerConfig>();
+  LoraAdamOptimizerConfig *adam = new LoraAdamOptimizerConfig();
   adam->alpha = j["alpha"];
   adam->beta1 = j["beta1"];
   adam->beta2 = j["beta2"];
@@ -220,12 +219,11 @@ std::ostream &operator<<(std::ostream &os, LoraLinearConfig const &llc) {
   os << "trainable: " << llc.trainable << ", ";
   if (llc.optimizer_config != nullptr) {
     os << "optimizer_config: ";
-    if (llc.optimizer_config.get()->getType() == "SGD") {
-      os << *static_cast<LoraSGDOptimizerConfig const *>(
-          llc.optimizer_config.get());
-    } else if (llc.optimizer_config.get()->getType() == "Adam") {
-      os << *static_cast<LoraAdamOptimizerConfig const *>(
-          llc.optimizer_config.get());
+    if (typeid(*llc.optimizer_config) == typeid(LoraSGDOptimizerConfig)) {
+      os << *static_cast<LoraSGDOptimizerConfig *>(llc.optimizer_config);
+    } else if (typeid(*llc.optimizer_config) ==
+               typeid(LoraAdamOptimizerConfig)) {
+      os << *static_cast<LoraAdamOptimizerConfig *>(llc.optimizer_config);
     } else {
       os << "Unknown optimizer config type";
     }
@@ -248,8 +246,6 @@ std::string LoraLinearConfig::serialize_to_json_string(int indent) const {
                       {"init_lora_weights", init_lora_weights},
                       {"base_model_name_or_path", base_model_name_or_path},
                       {"precision", precision},
-                      // {"optimizer_config", optimizer_config ?
-                      // optimizer_config->toJson() : nullptr}
                       {"optimizer_config",
                        optimizer_config
                            ? nlohmann::json(optimizer_config->toJson())
@@ -282,7 +278,8 @@ LoraLinearConfig LoraLinearConfig::deserialize_from_json_string(
       j["lora_dropout"].get<float>(),
       j["target_modules"].get<std::vector<std::string>>());
   if (!j["optimizer_config"].is_null()) {
-    config.setOptimizer(LoraOptimizerConfig::fromJson(j["optimizer_config"]));
+    config.optimizer_config =
+        LoraOptimizerConfig::fromJson(j["optimizer_config"]);
   }
   return config;
 }

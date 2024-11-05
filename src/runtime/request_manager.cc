@@ -263,8 +263,8 @@ size_t RequestManager::get_num_ssms() {
   return ssm_models.size();
 }
 
-void RequestManager::register_peft_config(PEFTModelID const &peft_model_id,
-                                          LoraLinearConfig const &peft_config) {
+void RequestManager::set_peft_config(PEFTModelID const &peft_model_id,
+                                     LoraLinearConfig const &peft_config) {
   // check that peft_model_id is not already in use
   assert(peft_configs.find(peft_model_id) == peft_configs.end() &&
          "PEFT model ID already in use");
@@ -322,7 +322,7 @@ PEFTModelID *
   }
   PEFTModelID *peft_model_id = new PEFTModelID(peft_model_global_guid++);
   RequestManager *rm = RequestManager::get_request_manager();
-  rm->register_peft_config(*peft_model_id, peft_config);
+  rm->set_peft_config(*peft_model_id, peft_config);
   return peft_model_id;
 }
 

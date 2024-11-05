@@ -150,8 +150,8 @@ public:
                           std::vector<int> eos_token_ids,
                           std::string const &path);
   void register_output_filepath(std::string const &);
-  void register_peft_config(PEFTModelID const &peft_model_id,
-                            LoraLinearConfig const &peft_config);
+  void set_peft_config(PEFTModelID const &peft_model_id,
+                       LoraLinearConfig const &peft_config);
   LoraLinearConfig const &get_peft_config(PEFTModelID const &peft_model_id);
   void set_max_lora_rank(int max_lora_rank);
   void set_max_concurrent_adapters(int max_concurrent_adapters);

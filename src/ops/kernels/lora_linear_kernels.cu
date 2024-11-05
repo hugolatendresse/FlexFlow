@@ -35,6 +35,7 @@ LoraLinearMeta::~LoraLinearMeta(void) {}
 namespace Kernels {
 namespace LoraLinear {
 
+#ifdef DEADCODE
 void init_kernel_wrapper(LoraLinearMeta *m, int seed) {
   cudaStream_t stream;
   checkCUDA(get_legion_stream(&stream));
@@ -47,6 +48,7 @@ void init_kernel_wrapper(LoraLinearMeta *m, int seed) {
     assert(false && "Unsupported data type");
   }
 }
+#endif
 
 void inference_kernel_wrapper(LoraLinearMeta *m,
                               BatchConfig const *bc,
@@ -314,7 +316,6 @@ void inference_kernel(LoraLinearMeta *m,
                       DT *output_ptr,
                       int in_dim,
                       int out_dim,
-                      int num_shards,
                       ffStream_t stream) {
   checkCUDA(cublasSetStream(m->handle.blas, stream));
   checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
@@ -593,7 +594,7 @@ void peft_bwd_kernel(Context ctx,
       if (lora_config.optimizer_config->getType() == "SGD") {
         LoraSGDOptimizerConfig const *sgd_config =
             static_cast<LoraSGDOptimizerConfig const *>(
-                lora_config.optimizer_config.get());
+                lora_config.optimizer_config);
         // LoRA_A weight is split in tensor parallelism, so no need to apply
         // all-reduce
         sgd_update<<<GET_BLOCKS(w0_num_elements),

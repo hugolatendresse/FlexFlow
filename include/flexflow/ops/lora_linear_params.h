@@ -19,8 +19,8 @@ public:
   LoraOptimizerConfig();
   virtual std::string getType() const = 0;
   virtual nlohmann::json toJson() const = 0;
-  static std::unique_ptr<LoraOptimizerConfig> fromJson(nlohmann::json const &j);
-  virtual ~LoraOptimizerConfig() = default;
+  static LoraOptimizerConfig *fromJson(nlohmann::json const &j);
+  virtual ~LoraOptimizerConfig() {}
 };
 
 class LoraSGDOptimizerConfig : public LoraOptimizerConfig {
@@ -32,15 +32,11 @@ public:
                          bool weight_decay_ = 0.0f);
   friend std::ostream &operator<<(std::ostream &os,
                                   LoraSGDOptimizerConfig const &llc);
-
   std::string getType() const override {
     return "SGD";
   }
-
   nlohmann::json toJson() const override;
-
-  static std::unique_ptr<LoraSGDOptimizerConfig>
-      fromJson(nlohmann::json const &j);
+  static LoraSGDOptimizerConfig *fromJson(nlohmann::json const &j);
 
 public:
   double lr = 0.001f;
@@ -63,11 +59,8 @@ public:
   std::string getType() const override {
     return "Adam";
   }
-
   nlohmann::json toJson() const override;
-
-  static std::unique_ptr<LoraAdamOptimizerConfig>
-      fromJson(nlohmann::json const &j);
+  static LoraAdamOptimizerConfig *fromJson(nlohmann::json const &j);
 
 public:
   // Adam
@@ -94,29 +87,11 @@ public:
                    std::vector<std::string> const &target_modules_ = {});
   // constructor used to support std::unordered_map
   LoraLinearConfig();
-
-  // Method to set optimizer
-  template <typename T>
-  void setOptimizer(T &&opt) {
-    if constexpr (std::is_base_of_v<LoraOptimizerConfig,
-                                    std::remove_reference_t<T>>) {
-      optimizer_config =
-          std::make_unique<std::remove_reference_t<T>>(std::forward<T>(opt));
-    } else if constexpr (std::is_same_v<std::unique_ptr<LoraOptimizerConfig>,
-                                        std::remove_reference_t<T>>) {
-      optimizer_config = std::move(opt);
-    } else {
-      static_assert(always_false<T>, "Unsupported optimizer type");
-    }
-  }
-  // Helper template for static_assert
-  template <typename>
-  static inline constexpr bool always_false = false;
-
   friend bool operator==(LoraLinearConfig const &lhs,
                          LoraLinearConfig const &rhs);
   friend std::ostream &operator<<(std::ostream &os,
                                   LoraLinearConfig const &llc);
+
   std::string serialize_to_json_string(int indent = -1) const;
   void serialize_to_json_file(std::string const &filename) const;
   // Deserialization method
@@ -138,8 +113,7 @@ public:
   // whether the weights are trainable (fine-tuning scenario) or not
   // (inference-only). If set to true, allocate space for the gradients
   bool trainable = false;
-  // LoraOptimizerConfig *optimizer_config;
-  std::unique_ptr<LoraOptimizerConfig> optimizer_config;
+  LoraOptimizerConfig *optimizer_config;
   // whether to initialize weights randomly (instead of attempting to load them
   // from file)
   bool init_lora_weights;

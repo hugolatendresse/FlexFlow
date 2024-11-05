@@ -10,6 +10,9 @@
 
 namespace FlexFlow {
 
+using Legion::Context;
+using Legion::Runtime;
+
 #ifdef DEADCODE
 struct LoraLinearModelState {
   LoraLinearWeight weights;
@@ -40,7 +43,7 @@ namespace LoraLinear {
 bool lora_applies_to_this_layer(LoraLinearMeta *m,
                                 LoraLinearConfig const &config);
 
-void init_kernel_wrapper(LoraLinearMeta *m, int seed);
+// void init_kernel_wrapper(LoraLinearMeta *m, int seed);
 void inference_kernel_wrapper(LoraLinearMeta *m,
                               BatchConfig const *bc,
                               GenericTensorAccessorR const &input,
@@ -53,8 +56,8 @@ void peft_bwd_kernel_wrapper(Context ctx,
                              GenericTensorAccessorR const &output_grad);
 
 namespace Internal {
-template <typename DT>
-void init_kernel(LoraLinearMeta *m, int seed, ffStream_t stream);
+// template <typename DT>
+// void init_kernel(LoraLinearMeta *m, int seed, ffStream_t stream);
 template <typename DT>
 void inference_kernel(LoraLinearMeta *m,
                       BatchConfig const *bc,

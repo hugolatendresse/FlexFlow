@@ -320,17 +320,18 @@ void FlexFlow::top_level_task(Task const *task,
     assert(false && "unknow model type");
   }
 
-  // Add PEFT layer
-  PEFTModelID *peft_model_id = nullptr, *peft_model_id_finetuning = nullptr;
-  if (!peft_model_name.empty()) {
-    peft_model_id = model.add_lora_layer(peft_config);
-    if (enable_peft_finetuning) {
-      peft_model_id_finetuning = model.add_lora_layer(peft_config_finetuning);
-    }
-  }
-
   // Start background server
   rm->start_background_server(&model);
+
+  // Add PEFT adapter(s)
+  PEFTModelID *peft_model_id = nullptr, *peft_model_id_finetuning = nullptr;
+  if (!peft_model_name.empty()) {
+    peft_model_id = model.register_peft_adapter(peft_config);
+    if (enable_peft_finetuning) {
+      peft_model_id_finetuning =
+          model.register_peft_adapter(peft_config_finetuning);
+    }
+  }
 
   // Run workload
   {
