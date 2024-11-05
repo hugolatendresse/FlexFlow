@@ -223,15 +223,15 @@ class HFTrainingCallBack(TrainerCallback):
         if not pre_finetuning:
             self.step_count += 1
 
-    def on_step_end(
-        self, args, state, control, model, tokenizer, optimizer, lr_scheduler, **kwargs
-    ):
-        self.save_lora_weights(model, pre_finetuning=False)
+    def on_step_end(self, args, state, control, **kwargs):
+        model_ = kwargs.get("model", None)
+        assert model_ is not None
+        self.save_lora_weights(model_, pre_finetuning=False)
 
-    def on_step_begin(
-        self, args, state, control, model, tokenizer, optimizer, lr_scheduler, **kwargs
-    ):
-        self.save_lora_weights(model, pre_finetuning=True)
+    def on_step_begin(self, args, state, control, **kwargs):
+        model_ = kwargs.get("model", None)
+        assert model_ is not None
+        self.save_lora_weights(model_, pre_finetuning=True)
 
     def on_train_end(self, args, state, control, **kwargs):
         if verbose:
