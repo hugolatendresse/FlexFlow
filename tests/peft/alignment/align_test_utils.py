@@ -430,7 +430,7 @@ def compare_loaded_tensors(hf_tensor, ff_tensor, tolerance=1e-2):
         print(f"HF: {hf_tensor}\nFF:{ff_tensor}")
         print(np.isclose(hf_tensor, ff_tensor, atol=tolerance))
         mismatches = np.where(~np.isclose(hf_tensor, ff_tensor, atol=tolerance))[0]
-        print(mismatches)
+        # print(mismatches)
     len_hf_tensor = hf_tensor.flatten().shape[0]
     assert len(mismatches) <= 0.05 * len_hf_tensor
     print("Ok!")

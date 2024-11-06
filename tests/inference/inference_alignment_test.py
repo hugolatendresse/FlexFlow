@@ -361,7 +361,7 @@ class LlamaAlignmentTest(AlignmentTest):
         hf_tensor = get_hf_tensor(hf_tensor_name, input_comparison)
         ff_tensor = get_ff_tensor(ff_tensor_name, input_comparison, hf_tensor.shape, tp_type=TPType.REPLICATE)[:,:,-1].squeeze()
         hf_tensor = hf_tensor.squeeze()
-        print(hf_tensor.shape, ff_tensor.shape)
+        # print(hf_tensor.shape, ff_tensor.shape)
         compare(hf_tensor, ff_tensor, label="LM head input")
         output_comparison = TensorComparisonIdxs(hf_tensor_type="output", ff_tensor_type="output", hf_tensor_idx=0, ff_tensor_idx=0)
         hf_tensor = get_hf_tensor(hf_tensor_name, output_comparison)
