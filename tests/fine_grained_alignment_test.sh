@@ -11,7 +11,7 @@ CACHE_PATH=${FF_CACHE_PATH:-"~/.cache/flexflow"}
 NUM_STEPS=${NUM_STEPS:-2}
 
 cleanup() {
-    rm -rf "${CACHE_PATH}"/debug ./fine_grained_alignment_config.json ./inference/output/fine_grained_alignment_test_ff.txt ./inference/output/fine_grained_alignment_test_hf.txt
+    eval rm -rf "${CACHE_PATH}/debug" ./fine_grained_alignment_config.json ./inference/output/fine_grained_alignment_test_ff.txt ./inference/output/fine_grained_alignment_test_hf.txt
 }
 
 # Cd into directory holding this script

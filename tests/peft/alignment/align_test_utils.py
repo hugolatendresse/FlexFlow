@@ -472,9 +472,9 @@ class TensorComparisonIdxs:
 def replace_value(lst, old_value, new_value):
     occurrences = lst.count(old_value)
     if occurrences == 0:
-        raise ValueError(f"Value {old_value} not found in the list.")
+        raise ValueError(f"Value {old_value} not found in the list: {lst}")
     elif occurrences > 1:
-        warnings.warn(f"Multiple instances of {old_value} found in the list.")
+        warnings.warn(f"Multiple instances of {old_value} found in the list: {lst}")
         occurrence_idx=0
         for i, value in enumerate(lst):
             if value == old_value:
