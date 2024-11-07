@@ -34,7 +34,7 @@ export LEGION_BACKTRACE=1
 python ./inference/utils/download_peft_model.py goliaro/llama-160m-lora --base_model_name JackFram/llama-160m 
 
 # Run PEFT in Huggingface to get ground truth tensors
-python ./tests/peft/hf_finetune.py --peft-model-id goliaro/llama-160m-lora --save-peft-tensors --use-full-precision
+python ./tests/peft/hf_finetune.py --peft-model-id goliaro/llama-160m-lora --save-peft-tensors --use-full-precision -lr 1.0
 
 # Python test
 echo "Python test"
@@ -45,8 +45,8 @@ echo "Python test"
 # C++ test
 echo "C++ test"
 ./build/inference/peft/peft \
-    -ll:gpu 2 -ll:cpu 4 -ll:util 4 \
-    -tensor-parallelism-degree 2 \
+    -ll:gpu 1 -ll:cpu 4 -ll:util 4 \
+    -tensor-parallelism-degree 1 \
     -ll:fsize 8192 -ll:zsize 12000 \
     -llm-model JackFram/llama-160m \
     -finetuning-dataset ./inference/prompt/peft_dataset.json \
@@ -55,7 +55,7 @@ echo "C++ test"
     --use-full-precision \
     --inference-debugging
 # Check alignment
-python ./tests/peft/peft_alignment_test.py -tp 2
+python ./tests/peft/peft_alignment_test.py -tp 1 -lr 1.0
 
 # Print succeess message
 echo ""

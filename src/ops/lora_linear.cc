@@ -136,133 +136,6 @@ void FFModel::add_lora_layers(std::vector<std::string> target_modules) {
   }
 }
 
-#ifdef DEADCODE
-PEFTModelID *FFModel::add_lora_layer(LoraLinearConfig const peft_config) {
-  assert(config.enable_peft &&
-         "Cannot add a LoRA layer if PEFT mode is not enabled");
-  if (peft_config.target_modules.size() == 0) {
-    printf("PEFT config does not contain any target module\n");
-    std::cout << peft_config << std::endl;
-    assert(false);
-  }
-  PEFTModelID *peft_model_id = new PEFTModelID(peft_model_global_guid++);
-  peft_configs[*peft_model_id] = peft_config;
-
-  for (std::string target_module_name : peft_config.target_modules) {
-    assert(target_module_name.length() > 0 &&
-           "LoRA target module name is empty");
-    // find target layer
-    for (auto it = layers.begin(); it != layers.end(); ++it) {
-      Layer *target_module = *it;
-      bool match = check_lora_layer_match(target_module, target_module_name);
-      if (!match) {
-        continue;
-      }
-
-      if (base_layer_to_peft_layer.find(target_module) !=
-          base_layer_to_peft_layer.end()) {
-        // lora linear layer already added, no need to add again
-        Layer *peft_layer = base_layer_to_peft_layer[target_module];
-        peft_layer_to_peft_id[peft_layer].push_back(*peft_model_id);
-      } else {
-        Tensor const input = target_module->inputs[0];
-        Tensor const output = target_module->outputs[0];
-        assert(input->data_type == output->data_type);
-        std::string name_ = target_module->name
-                                ? std::string(target_module->name)
-                                : std::string("");
-        size_t last_underscore = name_.length() - 1;
-        for (int i = name_.length() - 1; i > 0; i--) {
-          if (!(std::isdigit(target_module->name[i]) ||
-                target_module->name[i] == '_')) {
-            break;
-          } else if (target_module->name[i] == '_') {
-            last_underscore = i;
-          }
-        }
-        name_.erase(last_underscore);
-
-        name_ += ".lora";
-        std::cout << "Adding layer " << name_ << std::endl;
-        Layer *peft_layer = new Layer(this,
-                                      OP_LORA,
-                                      output->data_type,
-                                      name_.c_str(),
-                                      2 /*inputs*/,
-                                      0 /*weights*/,
-                                      1 /*outputs*/,
-                                      input,
-                                      output);
-        // fix LoRA layer's transformer layer ID and model ID
-        peft_layer->layer_guid.transformer_layer_id =
-            target_module->layer_guid.transformer_layer_id;
-        peft_layer->layer_guid.model_id = target_module->layer_guid.model_id;
-        {
-          int numdims = output->num_dims;
-          int dims[MAX_TENSOR_DIM];
-          for (int i = 0; i < numdims; i++) {
-            dims[i] = output->dims[i];
-          }
-          peft_layer->outputs[0] =
-              create_tensor_legion_ordering(numdims,
-                                            dims,
-                                            output->data_type,
-                                            peft_layer,
-                                            0,
-                                            true /*create_grad*/);
-        }
-        it = layers.insert(it + 1, peft_layer);
-        ++it;
-        base_layer_to_peft_layer[target_module] = peft_layer;
-        peft_layer_to_peft_id[peft_layer] = std::vector<PEFTModelID>();
-        peft_layer_to_peft_id[peft_layer].push_back(*peft_model_id);
-      }
-    }
-  }
-
-  // save finetuned lora model configs to file
-  if (peft_config.trainable) {
-    std::string finetuned_model_folder = join_path({
-        peft_config.cache_folder,
-        "finetuned_models",
-        peft_config.peft_model_id,
-    });
-    fs::remove_all(finetuned_model_folder);
-    std::string finetuned_model_config_folder = join_path({
-        finetuned_model_folder,
-        "config",
-    });
-    fs::create_directories(finetuned_model_config_folder);
-    std::string lora_linear_config_filepath = join_path({
-        finetuned_model_config_folder,
-        "ff_config.json",
-    });
-    serialize_to_json_file(peft_config, lora_linear_config_filepath);
-    std::string optimizer_config_filepath = join_path({
-        finetuned_model_config_folder,
-        "ff_optimizer_config.json",
-    });
-    if (typeid(*peft_config.optimizer_config) ==
-        typeid(LoraSGDOptimizerConfig)) {
-      LoraSGDOptimizerConfig const *sgd_config =
-          static_cast<LoraSGDOptimizerConfig const *>(
-              peft_config.optimizer_config);
-      serialize_to_json_file(*sgd_config, optimizer_config_filepath);
-    } else if (typeid(*peft_config.optimizer_config) ==
-               typeid(LoraAdamOptimizerConfig)) {
-      LoraAdamOptimizerConfig const *adam_config =
-          static_cast<LoraAdamOptimizerConfig const *>(
-              peft_config.optimizer_config);
-      serialize_to_json_file(*adam_config, optimizer_config_filepath);
-    } else {
-      assert(false && "Optimizer not supported");
-    }
-  }
-
-  return peft_model_id;
-}
-#endif
-
 Op *LoraLinear::create_operator_from_layer(
     FFModel &model,
     Layer const *layer,
@@ -272,15 +145,6 @@ Op *LoraLinear::create_operator_from_layer(
   int max_rank = value;
   layer->get_int_property("max_concurrent_adapters", value);
   int max_concurrent_adapters = value;
-#ifdef DEADCODE
-  std::unordered_map<PEFTModelID, LoraLinearConfig> _peft_configs;
-  std::vector<PEFTModelID> const &peft_ids =
-      model.peft_layer_to_peft_id[(Layer *)layer];
-  for (int i = 0; i < peft_ids.size(); i++) {
-    _peft_configs.emplace(
-        std::make_pair(peft_ids[i], model.peft_configs[peft_ids[i]]));
-  }
-#endif
   return new LoraLinear(model,
                         layer->layer_guid,
                         inputs[0],
@@ -982,7 +846,7 @@ void LoraLinear::peft_bwd_task(Task const *task,
   int out_dim = output_grad.domain.hi()[0] - output_grad.domain.lo()[0] + 1;
   // int num_infr_tokens = bc->num_active_infr_tokens();
   // int num_peft_tokens = bc->num_active_peft_tokens();
-  peft_bwd_kernel_wrapper(ctx, runtime, m, bc, input_grad, output_grad);
+  peft_bwd_kernel_wrapper(ctx, runtime, m, bc, shard_id, input_grad, output_grad);
 
   save_peft_weights_if_needed(m, bc, in_dim, out_dim, shard_id);
 
@@ -1018,14 +882,6 @@ bool operator==(LoraLinearParams const &lhs, LoraLinearParams const &rhs) {
   if (lhs.layer_guid == rhs.layer_guid && lhs.max_rank == rhs.max_rank &&
       lhs.max_concurrent_adapters == rhs.max_concurrent_adapters &&
       strcmp(lhs.name, rhs.name) == 0) {
-#ifdef DEADCODE
-    for (auto const &kv : lhs.peft_configs) {
-      auto it = rhs.peft_configs.find(kv.first);
-      if (it == rhs.peft_configs.end() || !(it->second == kv.second)) {
-        return false;
-      }
-    }
-#endif
     return true;
   }
   return false;
@@ -1066,50 +922,6 @@ void LoraLinear::serialize(Legion::Serializer &sez) const {
   sez.serialize(this->layer_guid.model_id);
   sez.serialize(this->max_rank);
   sez.serialize(this->max_concurrent_adapters);
-#ifdef DEADCODE
-  sez.serialize(this->op_type);
-  sez.serialize(this->peft_configs.size());
-  for (auto const &kv : this->peft_configs) {
-    // Serialize PEFTModelID
-    sez.serialize(kv.first.id);
-
-    // Serialize LoraLinearConfig and OptimizerConfig to tmp folder
-    // 1. Create tmp dir and serialize it
-    fs::path unique_temp_dir = create_unique_temp_directory();
-    serialize_string(sez, unique_temp_dir.string());
-    // 2. Dump LoraLinearConfig to json file in tmp dir
-    std::string lora_config_filename = std::string("lora_linear_config_") +
-                                       std::to_string(kv.first.id) +
-                                       std::string(".json");
-    fs::path lora_config_json_filepath = unique_temp_dir / lora_config_filename;
-    serialize_to_json_file(kv.second, lora_config_json_filepath);
-    // 3. Dump optimizer to json file in tmp dir, and serialize optimizer type
-    std::string optimizer_filename = std::string("optimizer_config_") +
-                                     std::to_string(kv.first.id) +
-                                     std::string(".json");
-    fs::path optim_config_filepath = unique_temp_dir / optimizer_filename;
-    assert((kv.second.trainable) == (kv.second.optimizer_config != nullptr));
-    if (kv.second.trainable) {
-      if (typeid(*kv.second.optimizer_config) ==
-          typeid(LoraSGDOptimizerConfig)) {
-        sez.serialize(OPTIMIZER_TYPE_SGD);
-        LoraSGDOptimizerConfig const *sgd_config =
-            static_cast<LoraSGDOptimizerConfig const *>(
-                kv.second.optimizer_config);
-        serialize_to_json_file(*sgd_config, optim_config_filepath);
-      } else if (typeid(*kv.second.optimizer_config) ==
-                 typeid(LoraAdamOptimizerConfig)) {
-        sez.serialize(OPTIMIZER_TYPE_ADAM);
-        LoraAdamOptimizerConfig const *adam_config =
-            static_cast<LoraAdamOptimizerConfig const *>(
-                kv.second.optimizer_config);
-        serialize_to_json_file(*adam_config, optim_config_filepath);
-      } else {
-        assert(false && "Optimizer type not yet supported");
-      }
-    }
-  }
-#endif
   sez.serialize(strlen(this->name));
   sez.serialize(this->name, strlen(this->name));
 }
@@ -1135,58 +947,6 @@ Node LoraLinear::deserialize(FFModel &ff,
   dez.deserialize(deserialized_model_id);
   dez.deserialize(max_rank);
   dez.deserialize(max_concurrent_adapters);
-#ifdef DEADCODE
-  dez.deserialize(op_type);
-  dez.deserialize(num_pefts);
-  for (int i = 0; i < num_pefts; i++) {
-    // Deserialize PEFTModelID
-    size_t pid;
-    dez.deserialize(pid);
-    PEFTModelID peft_model_id(pid);
-    // Deserialize tmp folder containing LoraLinearConfig and optimizer config
-    fs::path unique_temp_dir = fs::path(deserialize_string(dez));
-    // 1. Deserialize LoraLinearConfig
-    std::string lora_config_filename = std::string("lora_linear_config_") +
-                                       std::to_string(pid) +
-                                       std::string(".json");
-    fs::path lora_config_json_filepath = unique_temp_dir / lora_config_filename;
-    std::unique_ptr<LoraLinearConfig> lora_linear_config =
-        deserialize_from_json_file<LoraLinearConfig>(lora_config_json_filepath);
-    // 2. Deserialize optimizer if needed
-    if (lora_linear_config->trainable) {
-      std::string optimizer_filename = std::string("optimizer_config_") +
-                                       std::to_string(pid) +
-                                       std::string(".json");
-      fs::path optim_config_filepath = unique_temp_dir / optimizer_filename;
-      OptimizerType type_;
-      dez.deserialize(type_);
-      if (type_ == OPTIMIZER_TYPE_SGD) {
-        std::unique_ptr<LoraSGDOptimizerConfig> sgd_optimizer_config =
-            deserialize_from_json_file<LoraSGDOptimizerConfig>(
-                optim_config_filepath);
-        lora_linear_config->optimizer_config =
-            dynamic_cast<LoraOptimizerConfig *>(sgd_optimizer_config.release());
-      } else if (type_ == OPTIMIZER_TYPE_ADAM) {
-        std::unique_ptr<LoraAdamOptimizerConfig> adam_optimizer_config =
-            deserialize_from_json_file<LoraAdamOptimizerConfig>(
-                optim_config_filepath);
-        lora_linear_config->optimizer_config =
-            dynamic_cast<LoraOptimizerConfig *>(
-                adam_optimizer_config.release());
-      } else {
-        printf("Optimizer type: %d\n", type_);
-        assert(false && "Optimizer type not yet supported");
-      }
-    }
-    try {
-      fs::remove_all(unique_temp_dir);
-    } catch (fs::filesystem_error const &e) {
-      std::cerr << "Error removing tmp directory: " << e.what() << std::endl;
-    }
-    params.peft_configs.emplace(
-        std::make_pair(peft_model_id, *lora_linear_config));
-  }
-#endif
   dez.deserialize(name_len);
   dez.deserialize(name, name_len);
   LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
@@ -1236,19 +996,6 @@ size_t hash<FlexFlow::LoraLinearParams>::operator()(
   hash_combine(key, params.layer_guid.model_id);
   hash_combine(key, params.max_rank);
   hash_combine(key, params.max_concurrent_adapters);
-#ifdef DEADCODE
-  for (auto const &kv : params.peft_configs) {
-    hash_combine(key, kv.first.id);
-    hash_combine(key, kv.second.rank);
-    hash_combine(key, kv.second.trainable);
-    hash_combine(key, kv.second.cache_folder);
-    hash_combine(key, kv.second.peft_model_id);
-    hash_combine(key, kv.second.lora_alpha);
-    hash_combine(key, kv.second.lora_dropout);
-    hash_combine(key, kv.second.target_modules);
-    hash_combine(key, kv.second.init_lora_weights);
-  }
-#endif
   return key;
 }
 }; // namespace std

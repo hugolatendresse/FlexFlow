@@ -17,7 +17,7 @@ class AlignmentTest:
     def check_step(self, step_idx, learning_rate=0.001):
         raise NotImplementedError()
 
-class LllamaAlignmentTest(AlignmentTest):
+class LlamaAlignmentTest(AlignmentTest):
     def __init__(self, model_name, tp_degree=1):
         self.model_name = model_name
         self.peft_config = PeftConfig.from_pretrained(model_name)
@@ -538,11 +538,47 @@ class LllamaAlignmentTest(AlignmentTest):
             output_comparison = TensorComparisonIdxs(hf_tensor_type="output_gradient", ff_tensor_type="output_gradient", hf_tensor_idx=0, ff_tensor_idx=0)
             hf_tensor = get_hf_tensor(hf_tensor_name, output_comparison)
             ff_tensor = get_ff_tensor(ff_tensor_name, output_comparison, hf_tensor.shape, tp_type=TPType.PARTITION)
+            print(f"w3 {i} grad output")
+            print("flexflow tensor shape:", ff_tensor.squeeze().shape)
+            print(ff_tensor.squeeze())
+            print("huggingface tensor shape:", hf_tensor.squeeze().T.shape)
+            print(hf_tensor.squeeze().T)
             compare(hf_tensor, ff_tensor, label=f"W3 {i} gradient output")
+            # print(f"W3 {i} output matches!")
+            # print(f"FF shape: {ff_tensor.shape}")
+            # print(f"HF shape: {hf_tensor.shape}")
+
+            # hf_w3_output = hf_tensor.clone()
+
+
             # W3 (up_proj) input
             input_comparison = TensorComparisonIdxs(hf_tensor_type="input_gradient", ff_tensor_type="input_gradient", hf_tensor_idx=0, ff_tensor_idx=0)
             hf_tensor = get_hf_tensor(hf_tensor_name, input_comparison)
             ff_tensor = get_ff_tensor(ff_tensor_name, input_comparison, hf_tensor.shape, tp_type=TPType.TO_REDUCE)
+
+            # w3_input_torch = torch.matmul(hf_tensor, torch.transpose(ff_tensor, 0, 1))
+            # ff_up_proj_weight_path="/usr/.cache/flexflow/debug/flexflow/weights/step_0/shard_0/layers.11.layers.11.mlp.up_proj.weight_0"
+            # hf_up_proj_weight_path="/usr/.cache/flexflow/debug/huggingface/weights/step_0/layers.11.mlp.up_proj.weight"
+            # hf_up_proj_weight = torch.load(hf_up_proj_weight_path, map_location='cpu')
+            # print(hf_up_proj_weight.shape)
+            # ff_up_proj_weight = load_ff_tensor(ff_up_proj_weight_path, hf_up_proj_weight.shape[::-1])
+            # print(ff_up_proj_weight.shape)
+            # ff_up_proj_weight = torch.from_numpy(ff_up_proj_weight).to(hf_up_proj_weight.dtype)
+            # assert torch.allclose(hf_up_proj_weight.T, ff_up_proj_weight, atol=1e-5)
+            
+            # print("HF W3 output shape:", hf_w3_output.shape)
+            # print("HF W3 weight shape:", hf_up_proj_weight.shape)
+            # print("HF W3 input shape:", hf_tensor.shape)
+
+            # simulated_w3_input = torch.matmul(hf_w3_output.squeeze(), hf_up_proj_weight)
+            # print("simulated W3 input shape:", simulated_w3_input.T.shape)
+            # print(simulated_w3_input.T)
+            print(f"w3 {i} grad input")
+            print("flexflow tensor shape:", ff_tensor.squeeze().shape)
+            print(ff_tensor.squeeze())
+            print("huggingface tensor shape:", hf_tensor.squeeze().T.shape)
+            print(hf_tensor.squeeze().T)
+
             compare(hf_tensor, ff_tensor, label=f"W3 {i} gradient input")
 
             # Attn O-proj
@@ -695,7 +731,24 @@ class LllamaAlignmentTest(AlignmentTest):
             torch.testing.assert_close(hf_gradient, (hf_original_weight-hf_finetuned_weight)/learning_rate, rtol=1.3e-6, atol=1e-5)
             ff_gradient_name = convert_hf_filename_to_ff(hf_gradient_name)
             ff_gradient = get_ff_tensor(ff_gradient_name, hf_gradient.shape, tp_type=TPType.REPLICATE)
+            
+            lora_low_rank_activation_fwd_path = f"/usr/.cache/flexflow/debug/flexflow/fwd/step_{step_idx}/shard_0/layers.{i}.layers.{i}.mlp.down_proj.lora.low_rank_activation"
+            lora_low_rank_activation_bwd_path = f"/usr/.cache/flexflow/debug/flexflow/bwd/step_{step_idx}/shard_0/layers.{i}.layers.{i}.mlp.down_proj.lora.low_rank_activation"
+            lora_low_rank_activation_fwd = load_ff_tensor(lora_low_rank_activation_fwd_path, [16, 128])[:,:self.num_tokens]
+            lora_low_rank_activation_fwd = torch.from_numpy(lora_low_rank_activation_fwd)
+            lora_low_rank_activation_bwd = load_ff_tensor(lora_low_rank_activation_bwd_path, [16, 24])
+            lora_low_rank_activation_bwd = torch.from_numpy(lora_low_rank_activation_bwd)
+            torch.testing.assert_close(lora_low_rank_activation_fwd, lora_low_rank_activation_bwd, rtol=1.3e-6, atol=1e-5)
+            
+            print(f"LoRA_B {i} gradient")
+            print("FlexFlow shape: ", ff_gradient.shape)
+            print(ff_gradient)
+            print("HuggingFace shape: ", hf_gradient.shape)
+            print(hf_gradient.squeeze().T)
             compare(hf_gradient, ff_gradient, label=f"LoRA_B {i} gradient")
+
+            
+
             # ff_out_gradient_name = f"layers.{i}.layers.{i}.mlp.down_proj.lora.output_gradient_0"
             # ff_fwd_folder = os.path.join(ff_path, "fwd", f"step_{step_idx}", "shard_0")
             # ff_bwd_folder = os.path.join(ff_path, "bwd", f"step_{step_idx}", "shard_0")
@@ -737,7 +790,7 @@ parser.add_argument('-lr', '--learning-rate', type=float, default=0.001, help='T
 args = parser.parse_args()
 
 if __name__ == "__main__":
-    llama_alignment = LllamaAlignmentTest(args.model_name, tp_degree=args.tensor_parallelism_degree)
+    llama_alignment = LlamaAlignmentTest(args.model_name, tp_degree=args.tensor_parallelism_degree)
     # llama_alignment.check_weights_alignment()
     for i in range(args.num_steps):
         llama_alignment.check_fwd_pass(i)

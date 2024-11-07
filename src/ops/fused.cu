@@ -889,11 +889,13 @@ __host__ void FusedOp::peft_bwd_task(Task const *task,
         // Assert that the output and the second input are at the same place
         // since we ``inplace'' the output for LoRA
         assert(my_input_grad_accessor[1].ptr == my_output_grad_accessor[0].ptr);
+        int shard_id = task->index_point.point_data[0];
         Kernels::LoraLinear::peft_bwd_kernel_wrapper(
             ctx,
             runtime,
             m,
             bc,
+            shard_id,
             my_input_grad_accessor[0],
             my_output_grad_accessor[0]);
         break;

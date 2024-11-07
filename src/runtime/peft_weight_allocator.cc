@@ -23,7 +23,7 @@ using Legion::TaskLauncher;
 void PEFTMemoryManager::allocate_inference_memory() {
   // allocate chunk of memory for all the PEFT adapters
   Realm::Rect<1, coord_t> bounds(Realm::Point<1, coord_t>(0),
-                                 Realm::Point<1, coord_t>(max_lora_size - 1));
+                                 Realm::Point<1, coord_t>(max_lora_size*max_concurrent_adapters - 1));
   std::vector<size_t> field_sizes;
   field_sizes.push_back(sizeof(char));
   Realm::RegionInstance::create_instance(peftLegionInst,
@@ -39,7 +39,7 @@ void PEFTMemoryManager::allocate_inference_memory() {
 void PEFTMemoryManager::allocate_finetuning_memory() {
   size_t ft_size = max_lora_size * 3; // weights, gradients, momentum values
   ft_size +=
-      max_peft_tokens * (in_dim + max_rank); // input, low-rank activations
+      max_peft_tokens * (in_dim + max_rank) * data_type_size(dt); // input, low-rank activations
   // allocate chunk of memory for PEFT adapter
   Realm::Rect<1, coord_t> bounds(Realm::Point<1, coord_t>(0),
                                  Realm::Point<1, coord_t>(ft_size - 1));

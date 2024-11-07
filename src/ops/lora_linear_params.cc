@@ -282,18 +282,18 @@ LoraLinearConfig LoraLinearConfig::deserialize_from_json_string(
   if (!j["optimizer_config"].is_null()) {
     optimizer_config_ = LoraOptimizerConfig::fromJson(j["optimizer_config"]);
   }
-  LoraLinearConfig config(
-      j["cache_folder"].get<std::string>(),
-      j["peft_model_id"].get<std::string>(),
-      j["trainable"].get<bool>(),
-      optimizer_config_, // optimizer_config will be set later if present
-      j["init_lora_weights"].get<bool>(),
-      j["base_model_name_or_path"].get<std::string>(),
-      j["precision"].get<std::string>(),
-      j["rank"].get<int>(),
-      j["lora_alpha"].get<float>(),
-      j["lora_dropout"].get<float>(),
-      j["target_modules"].get<std::vector<std::string>>());
+  LoraLinearConfig config = LoraLinearConfig::EmptyConfig;
+  config.cache_folder = j["cache_folder"].get<std::string>();
+  config.peft_model_id = j["peft_model_id"].get<std::string>();
+  config.rank = j["rank"].get<int>();
+  config.lora_alpha = j["lora_alpha"].get<float>();
+  config.lora_dropout = j["lora_dropout"].get<float>();
+  config.target_modules = j["target_modules"].get<std::vector<std::string>>();
+  config.trainable = j["trainable"].get<bool>();
+  config.init_lora_weights = j["init_lora_weights"].get<bool>();
+  config.base_model_name_or_path = j["base_model_name_or_path"].get<std::string>();
+  config.precision = j["precision"].get<std::string>();
+  config.optimizer_config = optimizer_config_;
   return config;
 }
 
