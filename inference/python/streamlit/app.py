@@ -8,7 +8,7 @@ from huggingface_hub import model_info
 st.set_page_config(page_title="🚀💻 FlexLLM Server", layout="wide")
 
 # FastAPI server URL
-FASTAPI_URL = "http://localhost:8000/generate/"  # Adjust the port if necessary
+FASTAPI_URL = "http://localhost:8000/chat/completions"  # Adjust the port if necessary
 FINETUNE_URL = "http://localhost:8000/finetuning"
 
 # Initialize session state variables
@@ -30,18 +30,11 @@ def clear_chat_history():
     st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
 
 # Function for generating LLaMA2 response
-def generate_llama2_response(prompt_input):
-    string_dialogue = "You are a helpful assistant. You do not respond as 'User' or pretend to be 'User'. You only respond once as 'Assistant'."
-    for dict_message in st.session_state.messages:
-        if dict_message["role"] == "user":
-            string_dialogue += "User: " + dict_message["content"] + "\n\n"
-        else:
-            string_dialogue += "Assistant: " + dict_message["content"] + "\n\n"
-    
-    full_prompt = f"{string_dialogue} {prompt_input} Assistant: "
+def generate_llama3_response(prompt_input):
+    system_prompt="You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Please ensure that your responses are positive in nature."
     
     # Send request to FastAPI server
-    response = requests.post(FASTAPI_URL, json={"prompt": full_prompt})
+    response = requests.post(FASTAPI_URL, json={"max_new_tokens": 1024, "messages": [{"role": "system", "content": system_prompt}] + st.session_state.messages + [{"role": "user", "content": prompt_input}]})
     
     if response.status_code == 200:
         return response.json()["response"]
@@ -58,7 +51,7 @@ with st.sidebar:
         st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
 
         st.subheader('Generation parameters')
-        max_length = st.sidebar.slider('Max generation length', min_value=64, max_value=4096, value=2048, step=8)
+        max_length = st.sidebar.slider('Max generation length', min_value=64, max_value=2048, value=1024, step=8)
         # selected_model = st.sidebar.selectbox('Choose a Llama2 model', ['Llama2-7B', 'Llama2-13B', 'Llama2-70B'], key='selected_model')
         decoding_method = st.sidebar.selectbox('Decoding method', ['Greedy decoding (default)', 'Sampling'], key='decoding_method')
         temperature = st.sidebar.slider('temperature', min_value=0.01, max_value=5.0, value=0.1, step=0.01, disabled=decoding_method == 'Greedy decoding (default)')
@@ -181,8 +174,8 @@ if page == "Chat":
     # Generate a new response if last message is not from assistant
     if st.session_state.messages[-1]["role"] != "assistant":
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                response = generate_llama2_response(prompt)
+            with st.spinner("Running..."):
+                response = generate_llama3_response(prompt)
                 placeholder = st.empty()
                 full_response = ''
                 for item in response:

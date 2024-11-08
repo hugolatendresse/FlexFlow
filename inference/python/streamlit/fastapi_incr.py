@@ -46,12 +46,16 @@ class Message(BaseModel):
     content: str
 
 
+# class ChatCompletionRequest(BaseModel):
+#     model: Optional[str] = "mock-gpt-model"
+#     messages: List[Message]
+#     max_tokens: Optional[int] = 512
+#     temperature: Optional[float] = 0.1
+#     stream: Optional[bool] = False
+
 class ChatCompletionRequest(BaseModel):
-    model: Optional[str] = "mock-gpt-model"
+    max_new_tokens: Optional[int] = 1024
     messages: List[Message]
-    max_tokens: Optional[int] = 512
-    temperature: Optional[float] = 0.1
-    stream: Optional[bool] = False
 
 # Global variable to store the LLM model
 llm = None
@@ -76,12 +80,12 @@ def get_configs():
         # Define sample configs
         ff_init_configs = {
             # required parameters
-            "num_gpus": 4,
+            "num_gpus": 8,
             "memory_per_gpu": 20000,
             "zero_copy_memory_per_node": 40000,
             # optional parameters
             "num_cpus": 4,
-            "legion_utility_processors": 4,
+            "legion_utility_processors": 8,
             "data_parallelism_degree": 1,
             "tensor_parallelism_degree": 4,
             "pipeline_parallelism_degree": 1,
@@ -98,7 +102,7 @@ def get_configs():
         }
         llm_configs = {
             # required parameters
-            "llm_model": "meta-llama/Meta-Llama-3.1-8B",
+            "llm_model": "meta-llama/Llama-3.1-8B-Instruct",
             # optional parameters
             "cache_path": os.environ.get("FF_CACHE_PATH", ""),
             "refresh_cache": False,
@@ -139,7 +143,7 @@ async def startup_event():
         generation_config,
         max_requests_per_batch=16,
         max_seq_length=2048,
-        max_tokens_per_batch=64,
+        max_tokens_per_batch=1024,
     )
     llm.start_server()
 
@@ -171,11 +175,12 @@ async def chat_completions(request: ChatCompletionRequest):
     if llm is None:
         raise HTTPException(status_code=503, detail="LLM model is not initialized.")
     
-    if request.messages and request.messages[0].role == 'user':
-      resp_content = "As a mock AI Assitant, I can only echo your last message:" + request.messages[-1].content
-    else:
-      resp_content = "As a mock AI Assitant, I can only echo your last message, but there were no messages!"
-
+    print("received request:", request)
+    result = llm.generate([message.dict() for message in request.messages], max_new_tokens=request.max_new_tokens)[0].output_text.decode('utf-8')
+    print("returning response:", result)
+    return {
+        "response": result
+    }
     return {
         "id": "1337",
         "object": "chat.completion",

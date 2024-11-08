@@ -4759,6 +4759,7 @@ class FFModel(object):
                     finetuning_losses=finetuning_losses,
                 )
             )
+        return results
 
     def set_position_offset(self, offset):
         ffc().flexflow_model_set_position_offset(self.handle, offset)
