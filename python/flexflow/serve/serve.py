@@ -521,7 +521,7 @@ class LLM:
 
             atexit.register(self.rm.stop_server)
 
-    def _generate(self, requests: List[Request]):
+    def _generate(self, requests: List[Request]) -> List[GenerationResult]:
         if len(requests) == 0:
             return []
         for req in requests:
@@ -554,7 +554,7 @@ class LLM:
                     )
         return self.model.ffmodel.generate(requests)
 
-    def __chat2prompt(self, messages: List[dict]):
+    def __chat2prompt(self, messages: List[dict]) -> str:
         """Convert a list of messages to a single prompt string
 
         :param messages: The list of messages to convert
@@ -573,6 +573,12 @@ class LLM:
         if self.tokenizer.chat_template is None:
             raise ValueError(f"Model {self.model_name} does not support chat completion")
         return self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    
+    def __output2chat_response(self, requests: List[Request], outputs: List[GenerationResult]) -> List[GenerationResult]:
+        assert(len(requests) == len(outputs))
+        for i in range(len(outputs)):
+            outputs[i].output_text = outputs[i].output_text[len(requests[i].prompt):]
+        return outputs
 
     def generate(
         self,
@@ -626,7 +632,8 @@ class LLM:
                     max_new_tokens=max_new_tokens,
                     add_special_tokens=False,
                 )
-                return self._generate([request])
+                outputs = self._generate([request])
+                return self.__output2chat_response([request], outputs)
             elif type(requests_or_prompts[0]) == list:
                 prompts = [self.__chat2prompt(messages) for messages in requests_or_prompts]
                 requests = [
@@ -639,7 +646,8 @@ class LLM:
                     )
                     for prompt in prompts
                 ]
-                return self._generate(requests)
+                outputs = self._generate(requests)
+                return self.__output2chat_response(requests, outputs)
             elif type(requests_or_prompts[0]) == Request:
                 print(requests_or_prompts)
                 return self._generate(requests_or_prompts)

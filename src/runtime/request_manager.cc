@@ -765,6 +765,10 @@ BatchConfig RequestManager::prepare_next_batch(BatchConfig const &old_bc,
       assert(processed_tokens < request.tokens.size());
       bool request_completed = check_inf_req_completion(old_bc, i);
       if (request_completed) {
+        if (is_eos_token(request.tokens.back())) {
+          // remove the EOS token
+          request.tokens.pop_back();
+        }
         std::string output = this->tokenizer_->Decode(request.tokens);
         // Unlike Huggingface, the sentencepiece C++ library automatically
         // removes the BOS token
