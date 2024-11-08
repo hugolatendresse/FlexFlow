@@ -655,7 +655,8 @@ class LlamaAlignmentTest(AlignmentTest):
                 ff_tensor_name = f"layers.{i}.layers.{i}.input_layernorm"
                 _output_comparison = TensorComparisonIdxs(hf_tensor_type="input_gradient", ff_tensor_type="output_gradient", hf_tensor_idx=0, ff_tensor_idx=1)
                 input_layernorm_out1 = get_ff_tensor(ff_tensor_name, _output_comparison, hf_tensor.shape, tp_type=TPType.REPLICATE)
-                torch.testing.assert_close(attn_input, input_layernorm_out1, rtol=1.3e-6, atol=1e-5)
+                compare_loaded_tensors(attn_input, input_layernorm_out1, tolerance=1e-5)
+                # torch.testing.assert_close(attn_input, input_layernorm_out1, rtol=1.3e-6, atol=1e-5)
 
                 # Input layernorm
                 

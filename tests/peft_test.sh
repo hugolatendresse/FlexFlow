@@ -45,8 +45,8 @@ echo "Python test"
 # C++ test
 echo "C++ test"
 ./build/inference/peft/peft \
-    -ll:gpu 1 -ll:cpu 4 -ll:util 4 \
-    -tensor-parallelism-degree 1 \
+    -ll:gpu 4 -ll:cpu 4 -ll:util 4 \
+    -tensor-parallelism-degree 4 \
     -ll:fsize 8192 -ll:zsize 12000 \
     -llm-model JackFram/llama-160m \
     -finetuning-dataset ./inference/prompt/peft_dataset.json \
@@ -55,7 +55,7 @@ echo "C++ test"
     --use-full-precision \
     --inference-debugging
 # Check alignment
-python ./tests/peft/peft_alignment_test.py -tp 1 -lr 1.0
+python ./tests/peft/peft_alignment_test.py -tp 4 -lr 1.0
 
 # Print succeess message
 echo ""
