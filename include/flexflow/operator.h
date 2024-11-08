@@ -280,7 +280,7 @@ public:
     // get operator name and print it
     std::string op_name_without_uid = get_op_name_without_uid(m);
     std::cout << (fwd_pass ? "INF " : "BWD ") << op_name_without_uid
-              << std::endl;
+              << (before_kernel ? " (before kernel)" : "") << std::endl;
     // build the path to save the tensor
     fs::path dst_filepath;
     if (fwd_pass) {

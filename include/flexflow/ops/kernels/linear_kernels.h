@@ -61,6 +61,7 @@ void inference_kernel_wrapper(LinearMeta *m,
                               int out_dim,
                               int batch_size);
 void peft_bwd_kernel_wrapper(LinearMeta const *m,
+                             BatchConfig const *bc,
                              void *input_grad_ptr,
                              void *output_grad_ptr,
                              void const *kernel_ptr,
@@ -94,6 +95,7 @@ void forward_kernel(LinearMeta const *m,
                     ffStream_t stream);
 template <typename DT>
 void peft_bwd_kernel(LinearMeta const *m,
+                     BatchConfig const *bc,
                      void *input_grad_ptr,
                      void *output_grad_ptr,
                      void const *kernel_ptr,

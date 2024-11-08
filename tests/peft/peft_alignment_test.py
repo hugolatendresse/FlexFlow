@@ -485,12 +485,16 @@ class LlamaAlignmentTest(AlignmentTest):
             hf_tensor = get_hf_tensor(hf_tensor_name, output_comparison)
             ff_tensor = get_ff_tensor(ff_tensor_name, output_comparison, hf_tensor.shape, tp_type=TPType.REPLICATE)
             compare(hf_tensor, ff_tensor, label=f"W2 {i} gradient output")
+            down_proj_grad_output_pre = get_ff_tensor(ff_tensor_name, output_comparison, hf_tensor.shape, tp_type=TPType.REPLICATE, pre=True)
+            down_proj_grad_output = ff_tensor.clone()
+            compare_loaded_tensors(down_proj_grad_output, down_proj_grad_output_pre)
 
             # LoRA_B
             hf_tensor_name = f"layers.{i}.mlp.down_proj.lora_B.default"
             ff_tensor_name = convert_hf_filename_to_ff(hf_tensor_name)
             output_comparison = TensorComparisonIdxs(hf_tensor_type="output_gradient", ff_tensor_type="output_gradient", hf_tensor_idx=0, ff_tensor_idx=0)
             hf_tensor = get_hf_tensor(hf_tensor_name, output_comparison)
+            lora_grad_output = get_ff_tensor(ff_tensor_name, output_comparison, hf_tensor.shape, tp_type=TPType.REPLICATE)
             ff_tensor = get_ff_tensor(ff_tensor_name, output_comparison, hf_tensor.shape, tp_type=TPType.REPLICATE) * self.lora_scaling_factor
             compare(hf_tensor, ff_tensor, label=f"LoRA_B {i} gradient output")
 
@@ -501,6 +505,7 @@ class LlamaAlignmentTest(AlignmentTest):
             hf_tensor = get_hf_tensor(hf_tensor_name, input_comparison)
             ff_tensor = get_ff_tensor(ff_tensor_name, input_comparison, hf_tensor.shape, tp_type=TPType.PARTITION)
             compare(hf_tensor, ff_tensor, label=f"LoRA_A {i} gradient input")
+            lora_a_grad_input = ff_tensor.clone()
 
             # W2 (down_proj) input
             hf_tensor_name = f"layers.{i}.mlp.down_proj"
@@ -508,7 +513,15 @@ class LlamaAlignmentTest(AlignmentTest):
             input_comparison = TensorComparisonIdxs(hf_tensor_type="input_gradient", ff_tensor_type="input_gradient", hf_tensor_idx=0, ff_tensor_idx=0)
             hf_tensor = get_hf_tensor(hf_tensor_name, input_comparison)
             ff_tensor = get_ff_tensor(ff_tensor_name, input_comparison, hf_tensor.shape, tp_type=TPType.PARTITION)
+            down_proj_grad_input_pre = get_ff_tensor(ff_tensor_name, input_comparison, hf_tensor.shape, tp_type=TPType.PARTITION, pre=True)
             compare(hf_tensor, ff_tensor, label=f"W2 {i} gradient input")
+
+            # down proj output (before/after kernel) should match output of lora_b
+            compare_loaded_tensors(down_proj_grad_output, lora_grad_output)
+            # down proj input (before kernel) should match input of lora_a
+            compare_loaded_tensors(down_proj_grad_input_pre, lora_a_grad_input)
+            # compare_loaded_tensors(down_proj_grad_input_pre.squeeze(), ff_tensor.squeeze())
+
             
             # W2 input (HF) and SigmoidSiluMulti output (FF)
             hf_w2_input = hf_tensor.clone()
@@ -538,11 +551,11 @@ class LlamaAlignmentTest(AlignmentTest):
             output_comparison = TensorComparisonIdxs(hf_tensor_type="output_gradient", ff_tensor_type="output_gradient", hf_tensor_idx=0, ff_tensor_idx=0)
             hf_tensor = get_hf_tensor(hf_tensor_name, output_comparison)
             ff_tensor = get_ff_tensor(ff_tensor_name, output_comparison, hf_tensor.shape, tp_type=TPType.PARTITION)
-            print(f"w3 {i} grad output")
-            print("flexflow tensor shape:", ff_tensor.squeeze().shape)
-            print(ff_tensor.squeeze())
-            print("huggingface tensor shape:", hf_tensor.squeeze().T.shape)
-            print(hf_tensor.squeeze().T)
+            # print(f"w3 {i} grad output")
+            # print("flexflow tensor shape:", ff_tensor.squeeze().shape)
+            # print(ff_tensor.squeeze())
+            # print("huggingface tensor shape:", hf_tensor.squeeze().T.shape)
+            # print(hf_tensor.squeeze().T)
             compare(hf_tensor, ff_tensor, label=f"W3 {i} gradient output")
             # print(f"W3 {i} output matches!")
             # print(f"FF shape: {ff_tensor.shape}")
@@ -573,11 +586,11 @@ class LlamaAlignmentTest(AlignmentTest):
             # simulated_w3_input = torch.matmul(hf_w3_output.squeeze(), hf_up_proj_weight)
             # print("simulated W3 input shape:", simulated_w3_input.T.shape)
             # print(simulated_w3_input.T)
-            print(f"w3 {i} grad input")
-            print("flexflow tensor shape:", ff_tensor.squeeze().shape)
-            print(ff_tensor.squeeze())
-            print("huggingface tensor shape:", hf_tensor.squeeze().T.shape)
-            print(hf_tensor.squeeze().T)
+            # print(f"w3 {i} grad input")
+            # print("flexflow tensor shape:", ff_tensor.squeeze().shape)
+            # print(ff_tensor.squeeze())
+            # print("huggingface tensor shape:", hf_tensor.squeeze().T.shape)
+            # print(hf_tensor.squeeze().T)
 
             compare(hf_tensor, ff_tensor, label=f"W3 {i} gradient input")
 
@@ -740,11 +753,11 @@ class LlamaAlignmentTest(AlignmentTest):
             lora_low_rank_activation_bwd = torch.from_numpy(lora_low_rank_activation_bwd)
             torch.testing.assert_close(lora_low_rank_activation_fwd, lora_low_rank_activation_bwd, rtol=1.3e-6, atol=1e-5)
             
-            print(f"LoRA_B {i} gradient")
-            print("FlexFlow shape: ", ff_gradient.shape)
-            print(ff_gradient)
-            print("HuggingFace shape: ", hf_gradient.shape)
-            print(hf_gradient.squeeze().T)
+            # print(f"LoRA_B {i} gradient")
+            # print("FlexFlow shape: ", ff_gradient.shape)
+            # print(ff_gradient)
+            # print("HuggingFace shape: ", hf_gradient.shape)
+            # print(hf_gradient.squeeze().T)
             compare(hf_gradient, ff_gradient, label=f"LoRA_B {i} gradient")
 
             

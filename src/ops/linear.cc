@@ -769,6 +769,7 @@ void Linear::peft_bwd_task(Task const *task,
            num_peft_tokens);
   }
   peft_bwd_kernel_wrapper(m,
+                          bc,
                           input_grad.ptr,
                           output_grad.ptr,
                           weight.ptr,

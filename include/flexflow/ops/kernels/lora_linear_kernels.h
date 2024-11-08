@@ -13,27 +13,10 @@ namespace FlexFlow {
 using Legion::Context;
 using Legion::Runtime;
 
-#ifdef DEADCODE
-struct LoraLinearModelState {
-  LoraLinearWeight weights;
-  LoraOptimizerConfig const *optimizer_config;
-  float lora_alpha;
-  std::string cache_folder;
-  // Huggingface model ID (for download and/or upload)
-  std::string peft_model_id;
-};
-#endif
-
 class LoraLinearMeta : public OpMeta {
 public:
   LoraLinearMeta(FFHandler handle, LoraLinear const *li);
   ~LoraLinearMeta(void);
-  // PEFT related fields
-  // void *low_rank_activation;
-  // void *input_activation;
-  // std::unordeded_map<PEFTModelID, LoraLinearWeight> model_state;
-  // std::unordered_map<PEFTModelID, LoraLinearModelState> model_state;
-  // size_t allocated_peft_buffer_size1 = 0, allocated_peft_buffer_size2 = 0;
   PEFTMemoryManager *peft_memory_manager;
 };
 

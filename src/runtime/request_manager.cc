@@ -268,7 +268,8 @@ void RequestManager::set_peft_config(PEFTModelID const &peft_model_id,
   // check that peft_model_id is not already in use
   assert(peft_configs.find(peft_model_id) == peft_configs.end() &&
          "PEFT model ID already in use");
-  // LoraLinearConfig new_config = LoraLinearConfig::deserialize_from_json_string(
+  // LoraLinearConfig new_config =
+  // LoraLinearConfig::deserialize_from_json_string(
   //     peft_config.serialize_to_json_string());
   peft_configs[peft_model_id] = peft_config;
 }
@@ -305,7 +306,8 @@ PEFTModelID *
     std::cout << peft_config << std::endl;
     assert(false);
   }
-  std::cout << "Registering PEFT adapter" << peft_config.serialize_to_json_string() << std::endl;
+  std::cout << "Registering PEFT adapter"
+            << peft_config.serialize_to_json_string() << std::endl;
   // go over base_layer_to_peft_layer and check that you can find at least one
   // match
   for (int i = 0; i < peft_config.target_modules.size(); i++) {

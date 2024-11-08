@@ -273,7 +273,9 @@ void InferenceManager::compile_model_and_allocate_buffer(FFModel *model) {
         }
         reset_inputs.insert(op->inputs[i]->region);
       } else {
-        reset_inputs.insert(op->inputs[i]->region);
+        if (op->op_type != OP_LORA) {
+          reset_inputs.insert(op->inputs[i]->region);
+        }
       }
     }
   }

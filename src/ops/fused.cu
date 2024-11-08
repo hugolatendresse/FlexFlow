@@ -862,6 +862,7 @@ __host__ void FusedOp::peft_bwd_task(Task const *task,
         int num_infr_tokens = bc->num_active_infr_tokens();
         int num_peft_tokens = bc->num_active_peft_tokens();
         Kernels::Linear::peft_bwd_kernel_wrapper(m,
+                                                 bc,
                                                  my_input_grad_accessor[0].ptr,
                                                  my_output_grad_accessor[0].ptr,
                                                  my_weight_accessor[0].ptr,

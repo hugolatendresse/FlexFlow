@@ -23,14 +23,12 @@
 namespace FlexFlow {
 
 LoraLinearMeta::LoraLinearMeta(FFHandler handler, LoraLinear const *li)
-    : OpMeta(handler, li) {
-}
+    : OpMeta(handler, li) {}
 
 LoraLinearMeta::~LoraLinearMeta(void) {}
 
-std::string get_peft_dbg_folder(LoraLinearMeta const *m,
-                                int shard_id,
-                                bool is_fwd) {
+std::string
+    get_peft_dbg_folder(LoraLinearMeta const *m, int shard_id, bool is_fwd) {
   std::string op_name_without_uid = LoraLinear::get_op_name_without_uid(m);
   fs::path dst_filepath;
   if (is_fwd) {
@@ -50,8 +48,6 @@ std::string get_peft_dbg_folder(LoraLinearMeta const *m,
 
 namespace Kernels {
 namespace LoraLinear {
-
-
 
 void inference_kernel_wrapper(LoraLinearMeta *m,
                               BatchConfig const *bc,
@@ -174,7 +170,6 @@ bool lora_applies_to_this_layer(LoraLinearMeta *m,
 
 namespace Internal {
 
-
 template <typename DT>
 void inference_kernel(LoraLinearMeta *m,
                       BatchConfig const *bc,
@@ -208,8 +203,8 @@ void inference_kernel(LoraLinearMeta *m,
     if (!lora_applies_to_this_layer(m, lora_config)) {
       continue;
     }
-    std::cout << "Lora layer activated!" << std::endl;
-    std::cout << "Lora Config: " << peft_model_config_str << std::endl;
+    // std::cout << "Lora layer activated!" << std::endl;
+    // std::cout << "Lora Config: " << peft_model_config_str << std::endl;
     assert(lora_config.trainable == bc->requestsInfo[i].peft_bwd &&
            "Trainable flag mismatch");
     int num_peft_tokens = bc->requestsInfo[i].num_tokens_in_batch;
@@ -311,7 +306,7 @@ void peft_bwd_kernel(Context ctx,
                      Runtime *runtime,
                      LoraLinearMeta *m,
                      BatchConfig const *bc,
-                      int shard_id,
+                     int shard_id,
                      DT *input_grad_ptr,
                      DT const *output_grad_ptr,
                      int in_dim,
@@ -340,8 +335,8 @@ void peft_bwd_kernel(Context ctx,
     if (!lora_applies_to_this_layer(m, lora_config)) {
       continue;
     }
-    std::cout << "Lora layer activated!" << std::endl;
-    std::cout << "Lora Config: " << peft_model_config_str << std::endl;
+    // std::cout << "Lora layer activated!" << std::endl;
+    // std::cout << "Lora Config: " << peft_model_config_str << std::endl;
     assert(lora_config.trainable == bc->requestsInfo[i].peft_bwd &&
            "Trainable flag mismatch");
     m->peft_memory_manager->check_ft_model_id(
@@ -359,12 +354,17 @@ void peft_bwd_kernel(Context ctx,
       DT beta = (bc->requestsInfo[i].optimizer_tasks.reset_gradients_to_zero)
                     ? 0.0f
                     : 1.0f;
-      std::cout << "Lora B gradient computation, beta = " << (float) beta << std::endl;
+      // std::cout << "Lora B gradient computation, beta = " << (float) beta <<
+      // std::endl;
       if (m->inference_debugging) {
         // save result to file for checking
-        std::string filename = get_peft_dbg_folder(m, shard_id, false) + ".low_rank_activation";
-        std::cout << "Save low_rank_activation (" << lora_config.rank << ", " << num_peft_tokens << ") to " << filename << std::endl;
-        save_tensor(static_cast<const DT*>(weight.low_rank_activation), lora_config.rank*num_peft_tokens, filename.c_str());
+        std::string filename =
+            get_peft_dbg_folder(m, shard_id, false) + ".low_rank_activation";
+        std::cout << "Save low_rank_activation (" << lora_config.rank << ", "
+                  << num_peft_tokens << ") to " << filename << std::endl;
+        save_tensor(static_cast<const DT *>(weight.low_rank_activation),
+                    lora_config.rank * num_peft_tokens,
+                    filename.c_str());
       }
       checkCUDA(cublasGemmEx(m->handle.blas,
                              CUBLAS_OP_N,
