@@ -13,7 +13,7 @@
 
     * `export HUGGINGFACE_TOKEN="[Your token]"`
     * `huggingface-cli login --token "$HUGGINGFACE_TOKEN"`
-    * `python3 inference/utils/download_peft_model.py "goliaro/llama-2-7b-lora-full" --base_model_name "meta-llama/Llama-2-7b-hf"`
+    * `python3 inference/utils/download_peft_model.py "goliaro/llama-2-7b-lora-full"`
 
 * Run the demo
     ```

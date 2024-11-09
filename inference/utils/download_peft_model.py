@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 import flexflow.serve as ff
 import argparse, os
+from peft import PeftConfig
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--base_model_name", type=str, help="Name of the model to download"
-    )
     parser.add_argument(
         "peft_model_ids",
         type=str,
@@ -48,19 +46,21 @@ def main(args):
     else:
         data_types = (ff.DataType.DT_FLOAT, ff.DataType.DT_HALF)
 
-    for data_type in data_types:
-        llm = ff.LLM(
-            args.base_model_name,
-            data_type=data_type,
-            cache_path=args.cache_folder,
-            refresh_cache=args.refresh_cache,
-        )
-        for peft_model_id in args.peft_model_ids:
-            lora_config = ff.LoraLinearConfig(llm.cache_path, peft_model_id)
-            llm.add_peft(lora_config)
-        llm.download_hf_weights_if_needed()
-        llm.download_hf_config()
-        llm.download_hf_tokenizer_if_needed()
+    for peft_model_id in args.peft_model_ids:
+        hf_config = PeftConfig.from_pretrained(peft_model_id)
+        for data_type in data_types:
+            llm = ff.LLM(
+                hf_config.base_model_name_or_path,
+                data_type=data_type,
+                cache_path=args.cache_folder,
+                refresh_cache=args.refresh_cache,
+            )
+            # Download base model config, weights and tokenizer
+            llm.download_hf_config()
+            llm.download_hf_weights_if_needed()
+            llm.download_hf_tokenizer_if_needed()
+            # Download PEFT adapter
+            llm.download_peft_adapter_if_needed(peft_model_id)
 
 
 if __name__ == "__main__":

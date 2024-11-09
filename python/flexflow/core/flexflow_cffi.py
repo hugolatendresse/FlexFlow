@@ -1633,6 +1633,11 @@ class RequestManager(object):
 
     def get_max_sequence_length(self):
         return ffc().flexflow_request_manager_get_max_sequence_length(self.handle)
+    
+    def set_max_concurrent_adapters(self, max_adapters):
+        return ffc().flexflow_request_manager_set_max_concurrent_adapters(
+            self.handle, max_adapters
+        )
 
     def set_enable_peft_finetuning(self, enable_peft_finetuning):
         return ffc().flexflow_request_manager_set_enable_peft_finetuning(

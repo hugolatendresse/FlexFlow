@@ -31,16 +31,16 @@ mkdir -p ./inference/output
 export LEGION_BACKTRACE=1
 
 # Download test model
-python ./inference/utils/download_peft_model.py goliaro/llama-160m-lora --base_model_name JackFram/llama-160m 
+python ./inference/utils/download_peft_model.py goliaro/llama-160m-lora
 
 # Run PEFT in Huggingface to get ground truth tensors
-python ./tests/peft/hf_finetune.py --peft-model-id goliaro/llama-160m-lora --save-peft-tensors --use-full-precision -lr 1.0
+python ./tests/peft/hf_finetune.py --peft-model-id goliaro/llama-160m-lora --save-peft-tensors --use-full-precision -lr 0.001
 
 # Python test
 echo "Python test"
-# python ./inference/python/ff_peft.py
+python ./inference/python/ff_peft.py
 # Check alignment
-# python ./tests/peft/peft_alignment_test.py -tp 2
+python ./tests/peft/peft_alignment_test.py -tp 4 -lr 0.001
 
 # C++ test
 echo "C++ test"
@@ -55,7 +55,7 @@ echo "C++ test"
     --use-full-precision \
     --inference-debugging
 # Check alignment
-python ./tests/peft/peft_alignment_test.py -tp 4 -lr 1.0
+python ./tests/peft/peft_alignment_test.py -tp 4 -lr 0.001
 
 # Print succeess message
 echo ""

@@ -41,14 +41,14 @@ def get_configs():
         # Define sample configs
         ff_init_configs = {
             # required parameters
-            "num_gpus": 2,
+            "num_gpus": 4,
             "memory_per_gpu": 14000,
             "zero_copy_memory_per_node": 10000,
             # optional parameters
             "num_cpus": 4,
             "legion_utility_processors": 4,
             "data_parallelism_degree": 1,
-            "tensor_parallelism_degree": 2,
+            "tensor_parallelism_degree": 4,
             "pipeline_parallelism_degree": 1,
             "offload": False,
             "offload_reserve_space_size": 8 * 1024,  # 8GB
@@ -102,6 +102,23 @@ def main():
         refresh_cache=configs.refresh_cache,
         output_file=configs.output_file,
     )
+
+    # Compile the LLM for inference and load the weights into memory
+    generation_config = ff.GenerationConfig(
+        do_sample=False, temperature=0.9, topp=0.8, topk=1
+    )
+    enable_peft_finetuning = len(configs.finetuning_dataset) > 0
+    llm.compile(
+        generation_config,
+        max_requests_per_batch=1 if not enable_peft_finetuning else 2,
+        max_seq_length=256,
+        max_tokens_per_batch=128,
+        max_concurrent_adapters=1 if not enable_peft_finetuning else 2,
+        enable_peft_finetuning=enable_peft_finetuning,
+    )
+
+    llm.start_server()
+
     # Add inference and/or finetuning lora
     lora_inference_config = None
     lora_finetuning_config = None
@@ -111,18 +128,8 @@ def main():
             configs.inference_peft_model_id,
             base_model_name_or_path=configs.base_model,
         )
-        llm.add_peft(lora_inference_config)
+        llm.register_peft_adapter(lora_inference_config)
     if len(configs.finetuning_dataset) > 0:
-        # lora_finetuning_config = ff.LoraLinearConfig(
-        #     llm.cache_path,
-        #     configs.finetuning_peft_model_id,
-        #     target_modules=["down_proj"],
-        #     rank=16,
-        #     lora_alpha=16,
-        #     trainable=True,
-        #     init_lora_weights=True,
-        #     optimizer_type=ff.OptimizerType.OPTIMIZER_TYPE_SGD,
-        # )
         lora_finetuning_config = ff.LoraLinearConfig(
             llm.cache_path,
             configs.inference_peft_model_id,
@@ -136,22 +143,7 @@ def main():
                 "nesterov": False,
             },
         )
-        llm.add_peft(lora_finetuning_config)
-
-    # Compile the LLM for inference and load the weights into memory
-    generation_config = ff.GenerationConfig(
-        do_sample=False, temperature=0.9, topp=0.8, topk=1
-    )
-    enable_peft_finetuning = len(configs.finetuning_dataset) > 0
-    llm.compile(
-        generation_config,
-        enable_peft_finetuning=enable_peft_finetuning,
-        max_requests_per_batch=1 if not enable_peft_finetuning else 2,
-        max_seq_length=256,
-        max_tokens_per_batch=128,
-    )
-
-    llm.start_server()
+        llm.register_peft_adapter(lora_finetuning_config)
 
     requests = []
     # Serving

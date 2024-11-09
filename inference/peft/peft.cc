@@ -256,7 +256,7 @@ void FlexFlow::top_level_task(Task const *task,
   LoraOptimizerConfig *optim_config = nullptr;
   if (enable_peft_finetuning) {
     // float sgd_learning_rate = 2e-1;
-    float sgd_learning_rate = 1.0f;
+    float sgd_learning_rate = 0.001f;
     optim_config = new LoraSGDOptimizerConfig(sgd_learning_rate);
   }
   LoraLinearConfig peft_config_finetuning =

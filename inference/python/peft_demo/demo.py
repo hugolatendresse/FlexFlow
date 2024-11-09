@@ -98,7 +98,7 @@ with open(configs.output_file, 'w') as file:
     file.write('')
 
 # Download base and peft inference models
-args = [configs.inference_peft_model_id, '--base_model_name', configs.base_model]
+args = [configs.inference_peft_model_id]
 # hf_token = input("Please enter your HuggingFace personal access token: ")
 # subprocess.run(['huggingface-cli', 'login', '--token', hf_token])
 subprocess.run(['python', '../../utils/download_peft_model.py'] + args)
@@ -206,7 +206,7 @@ lora_inference_config = ff.LoraLinearConfig(
 )
 llm.add_peft(lora_inference_config)
 
-args = [configs.finetuning_peft_model_id, '--base_model_name', configs.base_model]
+args = [configs.finetuning_peft_model_id]
 #hf_token = input("Please enter your HuggingFace personal access token: ")
 # subprocess.run(['huggingface-cli', 'login', '--token', hf_token])
 # subprocess.run(['python', '../../utils/download_peft_model.py'] + args)
