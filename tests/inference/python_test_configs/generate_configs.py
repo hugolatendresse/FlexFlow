@@ -4,7 +4,7 @@ import os, json
 # Base configs dictionaries
 ff_init_configs = {
     # required parameters
-    "num_gpus": 8,
+    "num_gpus": 4,
     "memory_per_gpu": 14000,
     "zero_copy_memory_per_node": 40000,
     # optional parameters
