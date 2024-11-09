@@ -4,12 +4,12 @@ import os, json
 # Base configs dictionaries
 ff_init_configs = {
     # required parameters
-    "num_gpus": 4,
+    "num_gpus": 8,
     "memory_per_gpu": 14000,
     "zero_copy_memory_per_node": 40000,
     # optional parameters
-    "num_cpus": 4,
-    "legion_utility_processors": 4,
+    "num_cpus": 8,
+    "legion_utility_processors": 8,
     "data_parallelism_degree": 1,
     "tensor_parallelism_degree": 1,
     "pipeline_parallelism_degree": 4,
