@@ -3420,25 +3420,25 @@ bool FFModel::need_to_add_combine(int layer_idx) const {
 
 bool FFModel::need_to_add_allreduce(int layer_idx) const {
   auto const &l = layers[layer_idx];
-  if (config.computationMode == COMP_MODE_INFERENCE && config.tensor_parallelism_degree > 1 && l->op_type == OP_LINEAR &&
-      ( /*llama/mpt attention*/
-        (std::string(l->name).find("attn.o_proj") != std::string::npos) ||
-        /*opt/starcoder attention*/
-        (std::string(l->name).find("self_attn.o_proj") != std::string::npos) ||
-        /*falcon attention*/
-        (std::string(l->name).find("self_attention.o_proj") != std::string::npos) ||
-        /*llama mlp*/
-        (std::string(l->name).find("mlp.down_proj") != std::string::npos) || 
-        /*opt mlp*/
-        (std::string(l->name).find("fc2") != std::string::npos) ||
-        /*falcon mlp*/
-        (std::string(l->name).find("mlp.dense_4h_to_h") != std::string::npos) ||
-        /*mpt mlp*/
-        (std::string(l->name).find("ffn.down_proj") != std::string::npos) ||
-        /*starcoder mlp*/
-        (std::string(l->name).find("mlp.c_proj") != std::string::npos)
-      )
-  ) {
+  if (config.computationMode == COMP_MODE_INFERENCE &&
+      config.tensor_parallelism_degree > 1 && l->op_type == OP_LINEAR &&
+      (/*llama/mpt attention*/
+       (std::string(l->name).find("attn.o_proj") != std::string::npos) ||
+       /*opt/starcoder attention*/
+       (std::string(l->name).find("self_attn.o_proj") != std::string::npos) ||
+       /*falcon attention*/
+       (std::string(l->name).find("self_attention.o_proj") !=
+        std::string::npos) ||
+       /*llama mlp*/
+       (std::string(l->name).find("mlp.down_proj") != std::string::npos) ||
+       /*opt mlp*/
+       (std::string(l->name).find("fc2") != std::string::npos) ||
+       /*falcon mlp*/
+       (std::string(l->name).find("mlp.dense_4h_to_h") != std::string::npos) ||
+       /*mpt mlp*/
+       (std::string(l->name).find("ffn.down_proj") != std::string::npos) ||
+       /*starcoder mlp*/
+       (std::string(l->name).find("mlp.c_proj") != std::string::npos))) {
     return true;
   }
   return false;
