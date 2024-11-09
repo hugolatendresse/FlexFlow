@@ -3420,11 +3420,13 @@ bool FFModel::need_to_add_combine(int layer_idx) const {
 
 bool FFModel::need_to_add_allreduce(int layer_idx) const {
   auto const &l = layers[layer_idx];
-  if (config.computationMode == COMP_MODE_INFERENCE && config.tensor_parallelism_degree > 1 &&
-      ((l->op_type == OP_LINEAR && std::string(l->name).find("attn.o_proj") != std::string::npos) ||
-        is_mlp_block(layer_idx) ||
-        (l->op_type == OP_LINEAR && std::string(l->name).find("mlp.down_proj") != std::string::npos)
-      )) {
+  if (config.computationMode == COMP_MODE_INFERENCE &&
+      config.tensor_parallelism_degree > 1 &&
+      ((l->op_type == OP_LINEAR &&
+        std::string(l->name).find("attn.o_proj") != std::string::npos) ||
+       is_mlp_block(layer_idx) ||
+       (l->op_type == OP_LINEAR &&
+        std::string(l->name).find("mlp.down_proj") != std::string::npos))) {
     return true;
   }
   return false;
@@ -4795,6 +4797,51 @@ void register_flexflow_internal_tasks(Runtime *runtime,
         registrar.global_registration = false;
       }
       runtime->register_task_variant<RequestManager::background_serving_task>(
+          registrar);
+    }
+  }
+  {
+    TaskVariantRegistrar registrar(LOAD_FLOAT_WEIGHT_TASK_ID,
+                                   "load_float_weight_task");
+    registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
+    if (pre_register) {
+      Runtime::preregister_task_variant<FileDataLoader::load_float_weight_task>(
+          registrar, "load_float_weight_task");
+    } else {
+      if (enable_control_replication) {
+        registrar.global_registration = false;
+      }
+      runtime->register_task_variant<FileDataLoader::load_float_weight_task>(
+          registrar);
+    }
+  }
+  {
+    TaskVariantRegistrar registrar(LOAD_HALF_WEIGHT_TASK_ID,
+                                   "load_half_weight_task");
+    registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
+    if (pre_register) {
+      Runtime::preregister_task_variant<FileDataLoader::load_half_weight_task>(
+          registrar, "load_half_weight_task");
+    } else {
+      if (enable_control_replication) {
+        registrar.global_registration = false;
+      }
+      runtime->register_task_variant<FileDataLoader::load_half_weight_task>(
+          registrar);
+    }
+  }
+  {
+    TaskVariantRegistrar registrar(LOAD_QUANT_WEIGHT_TASK_ID,
+                                   "load_quant_weight_task");
+    registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
+    if (pre_register) {
+      Runtime::preregister_task_variant<FileDataLoader::load_quant_weight_task>(
+          registrar, "load_quant_weight_task");
+    } else {
+      if (enable_control_replication) {
+        registrar.global_registration = false;
+      }
+      runtime->register_task_variant<FileDataLoader::load_quant_weight_task>(
           registrar);
     }
   }

@@ -21,14 +21,14 @@ def get_configs():
     # Define sample configs
     ff_init_configs = {
         # required parameters
-        "num_gpus": 1,
-        "memory_per_gpu": 30000,
-        "zero_copy_memory_per_node": 60000,
+        "num_gpus": 8,
+        "memory_per_gpu": 34000,
+        "zero_copy_memory_per_node": 200000,
         # optional parameters
-        "num_cpus": 4,
-        "legion_utility_processors": 4,
+        "num_cpus": 16,
+        "legion_utility_processors": 16,
         "data_parallelism_degree": 1,
-        "tensor_parallelism_degree": 1,
+        "tensor_parallelism_degree": 8,
         "pipeline_parallelism_degree": 1,
         "offload": False,
         "offload_reserve_space_size": 8 * 1024,  # 8GB
@@ -43,7 +43,7 @@ def get_configs():
     }
     llm_configs = {
         # required parameters
-        "llm_model": "meta-llama/Meta-Llama-3-8B-Instruct",
+        "llm_model": "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF",
         # optional parameters
         "cache_path": os.environ.get("FF_CACHE_PATH", ""),
         "refresh_cache": False,
@@ -85,11 +85,15 @@ def main():
 
     llm.start_server()
 
+    nemotron_system = "You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Please ensure that your responses are positive in nature."
+    llama_generic_system = "You are a helpful an honest programming assistant."
+
+
     messages=[
-        {"role": "system", "content": "You are a helpful an honest programming assistant."},
+        {"role": "system", "content": nemotron_system},
         {"role": "user", "content": "Is Rust better than Python?"},
     ]
-    llm.generate(messages, max_new_tokens=256)
+    llm.generate(messages, max_new_tokens=1024)
     
     llm.stop_server()
 
