@@ -2929,7 +2929,6 @@ void flexflow_file_data_loader_load_weights(flexflow_file_data_loader_t handle_,
                                             flexflow_model_t model_handle_) {
   FileDataLoader *handle = FFCObjectWrapper::unwrap(handle_);
   FFModel *model = FFCObjectWrapper::unwrap(model_handle_);
-  // handle->load_weights(model);
   Context ctx = model->config.lg_ctx;
   Runtime *runtime = model->config.lg_hlr;
   handle->load_weights_parallel(model, ctx, runtime);

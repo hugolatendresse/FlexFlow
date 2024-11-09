@@ -852,69 +852,33 @@ void FileDataLoader::load_single_weight_tensor(FFModel *ff,
   delete data;
 }
 
-#ifdef DEADCODE
-void FileDataLoader::load_weights(FFModel *ff) {
-  for (Layer *l : ff->layers) {
-    if (l->numWeights < 1 || l->name == NULL || strlen(l->name) < 1) {
-      continue;
+void FileDataLoader::load_weight_task(
+    Legion::Task const *task,
+    std::vector<Legion::PhysicalRegion> const &regions,
+    Legion::Context ctx,
+    Legion::Runtime *runtime) {
+  WeightLoadTaskArgs const *args = (WeightLoadTaskArgs const *)task->args;
+
+  switch (args->data_type) {
+    case DT_HALF: {
+      args->loader->load_single_weight_tensor<half>(
+          args->ff, args->layer, args->weight_idx);
+      break;
     }
-    for (int i = 0; i < l->numWeights; i++) {
-      Tensor weight = l->weights[i];
-      if (weight == NULL) {
-        continue;
-      }
-      // TODO: currently skip Lora layers
-      if (l->op_type == OP_LORA) {
-        continue;
-      }
-      switch (weight->data_type) {
-        case DT_HALF:
-          load_single_weight_tensor<half>(ff, l, i);
-          break;
-        case DT_FLOAT:
-          load_single_weight_tensor<float>(ff, l, i);
-          break;
-        case DT_INT4:
-        case DT_INT8:
-          // load weights in quantization
-          load_quantization_weight(ff, l, i);
-          break;
-        default:
-          assert(false && "Unsupported data type");
-      }
+    case DT_FLOAT: {
+      args->loader->load_single_weight_tensor<float>(
+          args->ff, args->layer, args->weight_idx);
+      break;
     }
+    case DT_INT4:
+    case DT_INT8: {
+      args->loader->load_quantization_weight(
+          args->ff, args->layer, args->weight_idx);
+      break;
+    }
+    default:
+      assert(false && "Unsupported data type");
   }
-}
-#endif
-
-void FileDataLoader::load_float_weight_task(
-    Legion::Task const *task,
-    std::vector<Legion::PhysicalRegion> const &regions,
-    Legion::Context ctx,
-    Legion::Runtime *runtime) {
-  WeightLoadTaskArgs const *args = (WeightLoadTaskArgs const *)task->args;
-  args->loader->load_single_weight_tensor<float>(
-      args->ff, args->layer, args->weight_idx);
-}
-
-void FileDataLoader::load_half_weight_task(
-    Legion::Task const *task,
-    std::vector<Legion::PhysicalRegion> const &regions,
-    Legion::Context ctx,
-    Legion::Runtime *runtime) {
-  WeightLoadTaskArgs const *args = (WeightLoadTaskArgs const *)task->args;
-  args->loader->load_single_weight_tensor<half>(
-      args->ff, args->layer, args->weight_idx);
-}
-
-void FileDataLoader::load_quant_weight_task(
-    Legion::Task const *task,
-    std::vector<Legion::PhysicalRegion> const &regions,
-    Legion::Context ctx,
-    Legion::Runtime *runtime) {
-  WeightLoadTaskArgs const *args = (WeightLoadTaskArgs const *)task->args;
-  args->loader->load_quantization_weight(
-      args->ff, args->layer, args->weight_idx);
 }
 
 void FileDataLoader::load_weights_parallel(FFModel *ff,
@@ -937,35 +901,16 @@ void FileDataLoader::load_weights_parallel(FFModel *ff,
         continue;
       }
 
-      // Create task arguments
-      WeightLoadTaskArgs args(ff, this, l, i);
-
-      switch (weight->data_type) {
-        case DT_HALF: {
-          TaskLauncher launcher(
-              LOAD_HALF_WEIGHT_TASK_ID,
-              TaskArgument(&args, sizeof(WeightLoadTaskArgs)));
-          futures.push_back(runtime->execute_task(ctx, launcher));
-          break;
-        }
-        case DT_FLOAT: {
-          TaskLauncher launcher(
-              LOAD_FLOAT_WEIGHT_TASK_ID,
-              TaskArgument(&args, sizeof(WeightLoadTaskArgs)));
-          futures.push_back(runtime->execute_task(ctx, launcher));
-          break;
-        }
-        case DT_INT4:
-        case DT_INT8: {
-          TaskLauncher launcher(
-              LOAD_QUANT_WEIGHT_TASK_ID,
-              TaskArgument(&args, sizeof(WeightLoadTaskArgs)));
-          futures.push_back(runtime->execute_task(ctx, launcher));
-          break;
-        }
-        default:
-          assert(false && "Unsupported data type");
+      if (weight->data_type != DT_FLOAT && weight->data_type != DT_HALF &&
+          weight->data_type != DT_INT4 && weight->data_type != DT_INT8) {
+        assert(false && "Unsupported data type");
       }
+
+      // Create task arguments
+      WeightLoadTaskArgs args(ff, this, l, i, weight->data_type);
+      TaskLauncher launcher(LOAD_WEIGHT_TASK_ID,
+                            TaskArgument(&args, sizeof(WeightLoadTaskArgs)));
+      futures.push_back(runtime->execute_task(ctx, launcher));
     }
   }
 

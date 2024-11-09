@@ -4801,47 +4801,16 @@ void register_flexflow_internal_tasks(Runtime *runtime,
     }
   }
   {
-    TaskVariantRegistrar registrar(LOAD_FLOAT_WEIGHT_TASK_ID,
-                                   "load_float_weight_task");
+    TaskVariantRegistrar registrar(LOAD_WEIGHT_TASK_ID, "load_weight_task");
     registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
     if (pre_register) {
-      Runtime::preregister_task_variant<FileDataLoader::load_float_weight_task>(
-          registrar, "load_float_weight_task");
+      Runtime::preregister_task_variant<FileDataLoader::load_weight_task>(
+          registrar, "load_weight_task");
     } else {
       if (enable_control_replication) {
         registrar.global_registration = false;
       }
-      runtime->register_task_variant<FileDataLoader::load_float_weight_task>(
-          registrar);
-    }
-  }
-  {
-    TaskVariantRegistrar registrar(LOAD_HALF_WEIGHT_TASK_ID,
-                                   "load_half_weight_task");
-    registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
-    if (pre_register) {
-      Runtime::preregister_task_variant<FileDataLoader::load_half_weight_task>(
-          registrar, "load_half_weight_task");
-    } else {
-      if (enable_control_replication) {
-        registrar.global_registration = false;
-      }
-      runtime->register_task_variant<FileDataLoader::load_half_weight_task>(
-          registrar);
-    }
-  }
-  {
-    TaskVariantRegistrar registrar(LOAD_QUANT_WEIGHT_TASK_ID,
-                                   "load_quant_weight_task");
-    registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
-    if (pre_register) {
-      Runtime::preregister_task_variant<FileDataLoader::load_quant_weight_task>(
-          registrar, "load_quant_weight_task");
-    } else {
-      if (enable_control_replication) {
-        registrar.global_registration = false;
-      }
-      runtime->register_task_variant<FileDataLoader::load_quant_weight_task>(
+      runtime->register_task_variant<FileDataLoader::load_weight_task>(
           registrar);
     }
   }

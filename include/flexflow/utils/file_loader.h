@@ -39,25 +39,12 @@ public:
   void load_single_weight_tensor(FFModel *ff, Layer *l, int weight_idx);
 
   void load_quantization_weight(FFModel *ff, Layer *l, int weight_idx);
-#ifdef DEADCODE
-  void load_weights(FFModel *ff);
-#endif
 
   static void
-      load_float_weight_task(Legion::Task const *task,
-                             std::vector<Legion::PhysicalRegion> const &regions,
-                             Legion::Context ctx,
-                             Legion::Runtime *runtime);
-  static void
-      load_half_weight_task(Legion::Task const *task,
-                            std::vector<Legion::PhysicalRegion> const &regions,
-                            Legion::Context ctx,
-                            Legion::Runtime *runtime);
-  static void
-      load_quant_weight_task(Legion::Task const *task,
-                             std::vector<Legion::PhysicalRegion> const &regions,
-                             Legion::Context ctx,
-                             Legion::Runtime *runtime);
+      load_weight_task(Legion::Task const *task,
+                       std::vector<Legion::PhysicalRegion> const &regions,
+                       Legion::Context ctx,
+                       Legion::Runtime *runtime);
   void load_weights_parallel(FFModel *ff, Context ctx, Runtime *runtime);
 
   void load_positions(FFModel *ff,
@@ -79,6 +66,12 @@ struct WeightLoadTaskArgs {
   FileDataLoader *loader;
   Layer *layer;
   int weight_idx;
-  WeightLoadTaskArgs(FFModel *_ff, FileDataLoader *_loader, Layer *_l, int _idx)
-      : ff(_ff), loader(_loader), layer(_l), weight_idx(_idx) {}
+  DataType data_type;
+  WeightLoadTaskArgs(FFModel *_ff,
+                     FileDataLoader *_loader,
+                     Layer *_l,
+                     int _idx,
+                     DataType _data_type)
+      : ff(_ff), loader(_loader), layer(_l), weight_idx(_idx),
+        data_type(_data_type) {}
 };
