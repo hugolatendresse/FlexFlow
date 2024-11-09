@@ -243,9 +243,6 @@ void OPT::create_opt_model(FFModel &ff,
                    REG_MODE_NONE,
                    0.0f,
                    std::string("layers." + std::to_string(i) + ".fc2").c_str());
-    // Low-Rank Adapter (LoRA) for the second linear layer
-    // ff.lora_linear(std::string("fc2"), std::string("layers." +
-    // std::to_string(i) + ".fc2.lora").c_str());
   }
 
   // final

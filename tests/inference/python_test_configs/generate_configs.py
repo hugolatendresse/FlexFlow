@@ -62,14 +62,13 @@ mpt_models = [
 # starcoder_models = ["bigcode/starcoderbase-7b",]
 parallelism_settings = [(1, 4), (2, 2), (4, 1)]
 
-# The paths below should be with respect to the folder from which the tests are launched (FF_HOME/tests/inference)
-prompt_file = "../../inference/prompt/test.json"
-output_folder = "../../inference/output"
-
 # Change working dir to folder storing this script
 abspath = os.path.abspath(__file__)
 dname = os.path.dirname(abspath)
 os.chdir(dname)
+
+prompt_file = os.path.abspath("../../../inference/prompt/test.json")
+output_folder = os.path.abspath("../../../inference/output")
 
 
 # Generate incremental decoding configs

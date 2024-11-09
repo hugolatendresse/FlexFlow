@@ -463,6 +463,9 @@ class LLM:
             mode = InferenceMode.TREE_VERIFY_MODE
         elif type(self) == SSM:
             mode = InferenceMode.BEAM_SEARCH_MODE
+            self.ffconfig.data_parallelism_degree = 1
+            self.ffconfig.tensor_parallelism_degree = 1
+            self.ffconfig.pipeline_parallelism_degree = 1
         else:
             assert type(self) == LLM
             mode = InferenceMode.INC_DECODING_MODE
