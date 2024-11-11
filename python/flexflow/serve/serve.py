@@ -270,27 +270,20 @@ class LLM:
         Returns:
             bool: True if the weights or tokenizer need a refresh, False otherwise
         """
-        need_refresh = False
         resource_path = self.__get_resource_path(model_name, resource_type)
-        if self.refresh_cache or not os.path.exists(resource_path):
-            need_refresh = True
-        else:
-            ff_revision, latest_revision = self.__get_revision_hashes(
-                self.model_name, resource_path
-            )
-            if ff_revision != latest_revision:
-                need_refresh = True
-        if need_refresh:
+        ff_revision, latest_revision = self.__get_revision_hashes(self.model_name, resource_path)
+        if self.refresh_cache or not os.path.exists(resource_path) or ff_revision != latest_revision:
             print(
                 f"Refreshing {resource_type} in cache for model {model_name} at path {resource_path} ..."
             )
             if os.path.exists(resource_path):
                 shutil.rmtree(resource_path)
-        os.makedirs(resource_path, exist_ok=True)
-        ff_revision_file = os.path.join(resource_path, "rev_sha.txt")
-        with open(ff_revision_file, "w+") as f:
-            f.write(latest_revision)
-        return need_refresh
+            os.makedirs(resource_path, exist_ok=True)
+            ff_revision_file = os.path.join(resource_path, "rev_sha.txt")
+            with open(ff_revision_file, "w+") as f:
+                f.write(latest_revision)
+            return True
+        return False
 
     def download_hf_weights_if_needed(self) -> None:
         """Check in the folder specified by the cache_path whether the LLM's model weights are available and up to date.
