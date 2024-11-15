@@ -1,7 +1,11 @@
 #! /usr/bin/env bash
 set -x
 set -e
-
+# runs a model in ff, uses inference debugging to saved to disk each intput output weight, does the same in hf, and saves too, and compares each tensors
+# saves shards too, helps finds misalignement between hf and ff
+# powerful but a bit harder to use, need to underswtand how the tensors are structured in ff and hf ,
+# right now only works for llama  model
+# will have to understand how moe works in hf
 MODEL_NAME=${MODEL_NAME:-"JackFram/llama-160m"}
 MEMORY_PER_GPU=${MEMORY_PER_GPU:-14000}
 ZCOPY_MEMORY=${ZCOPY_MEMORY:-40000}

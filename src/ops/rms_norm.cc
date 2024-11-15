@@ -71,10 +71,10 @@ Tensor FFModel::rms_norm(const Tensor input,
   if (data_type != input->data_type) {
     Tensor casted_input = cast(input, data_type, "type cast for rms_norm");
     rm = new Layer(this,
-                   OP_RMS_NORM,
+                   OP_RMS_NORM, // layer type (run time will know which type of layer)
                    data_type,
                    name,
-                   1 /*inputs*/,
+                   1 /*inputs*/, // scaler so everything is 1
                    1 /*weights*/,
                    1 /*outputs*/,
                    casted_input);
@@ -88,12 +88,18 @@ Tensor FFModel::rms_norm(const Tensor input,
                    1 /*outputs*/,
                    input);
   }
-  rm->outputs[0] = create_tensor_legion_ordering(
+  rm->outputs[0] = create_tensor_legion_ordering( // cretae output tensor and set dims, before parallelization
       input->num_dims, input->dims, data_type, rm, 0, true /*create_grad*/);
 
+  // we use column major ordering , contrearily to pytorch
+
+  // our dimensions are also reverse: batch size at the end
+
+  // legion_ordering: does NOT reverse dimensions, will keep as you pass
+
   // weights
-  int weight_dims[1] = {dim};
-  rm->weights[0] = create_weight_legion_ordering(1,
+  int weight_dims[1] = {dim}; // _legion_ordering means that dim is set in same order as passed to it.   //create_tensor only would revert order of dims
+  rm->weights[0] = create_weight_legion_ordering(1, // create a teensor for weights
                                                  weight_dims,
                                                  data_type,
                                                  rm,
@@ -101,16 +107,20 @@ Tensor FFModel::rms_norm(const Tensor input,
                                                  nullptr,
                                                  CHOSEN_SYNC_TYPE);
 
-  rm->add_float_property("eps", eps);
-  rm->add_int_property("dim", dim);
-  layers.push_back(rm);
-  return rm->outputs[0];
+  rm->add_float_property("eps", eps); // meta data to be retrieved later _
+  rm->add_int_property("dim", dim); // other meta data
+  layers.push_back(rm); // add layer to model
+  return rm->outputs[0]; // return otuput tensor, can be used as input for other layers
 }
 
-Op *RMSNorm::create_operator_from_layer(
+// each inputs is aan output of other operator, and so they are already parallel tensor (everything is a parallel tensor at some level. the layer level is only very thign)
+// all that we see and use is an operator, we do everything at op level
+// layher level only has logical dependencies between layhers
+// coputation is at kernel level
+Op *RMSNorm::create_operator_from_layer( // conversion to op
     FFModel &model,
     Layer const *layer,
-    std::vector<ParallelTensor> const &inputs) {
+    std::vector<ParallelTensor> const &inputs) { // inputs are already paral tensors
   float eps;
   layer->get_float_property("eps", eps);
   long long value;
@@ -423,7 +433,7 @@ void RMSNorm::inference_task(Task const *task,
   GenericTensorAccessorR weight = helperGetGenericTensorAccessorRO(
       m->weight_type[0], regions[2], task->regions[2], FID_DATA, ctx, runtime);
   inference_kernel_wrapper(m, bc, input, weight, output);
-  if (m->inference_debugging) {
+  if (m->inference_debugging) { // if pass --inference-debugging as parameter, this will be True and will save to disk (for debuigging)
     assert(task->index_point.get_dim() == 1);
     int shard_id = task->index_point.point_data[0];
     RMSNorm::save_inference_tensors_to_file(

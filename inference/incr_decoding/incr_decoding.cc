@@ -226,10 +226,10 @@ void FlexFlow::top_level_task(Task const *task,
       model_type, bos_token_id, eos_token_ids, tokenizer_filepath);
   rm->register_output_filepath(file_paths.output_file_path);
 
-  FFModel model(ffconfig, ffconfig.cpu_offload);
+  FFModel model(ffconfig, ffconfig.cpu_offload); // create eempty ff model
   if (model_type == ModelType::LLAMA) {
-    LLAMA::create_llama_model(model,
-                              config_filepath,
+    LLAMA::create_llama_model(model, //
+                              config_filepath, // config from hf
                               weights_filepath,
                               INC_DECODING_MODE,
                               generationConfig,

@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 set -x
 set -e
-
+# use this for testing
 cleanup() {
     rm -rf ../inference/prompt ../inference/output
 }

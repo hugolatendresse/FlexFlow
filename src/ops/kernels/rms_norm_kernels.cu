@@ -124,7 +124,7 @@ __global__ void RMSNormFusedForwardKernel(int64_t N,
 }
 
 template <typename T>
-void forward_kernel(RMSNormMeta const *m,
+void forward_kernel(RMSNormMeta const *m, // actual cuda implementation! kernel level
                     T const *input_ptr,
                     T const *weight_ptr,
                     T *output_ptr,
