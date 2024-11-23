@@ -46,12 +46,12 @@ RUN MINICONDA_SCRIPT_NAME=Miniconda3-py311_23.5.2-0-Linux-x86_64.sh; \
 
 # set MAKEFLAGS to speedup any dependency that uses make
 ARG N_BUILD_CORES
-ENV MAKEFLAGS "${MAKEFLAGS} -j${N_BUILD_CORES}"
+ENV MAKEFLAGS="${MAKEFLAGS} -j${N_BUILD_CORES}"
 
 # Set env vars
-ENV PATH /opt/conda/bin:$PATH
-ENV CUDNN_DIR /usr/local/cuda
-ENV CUDA_DIR /usr/local/cuda
+ENV PATH=/opt/conda/bin:$PATH
+ENV CUDNN_DIR=/usr/local/cuda
+ENV CUDA_DIR=/usr/local/cuda
 
 # GPU-specific dependencies
 ARG FF_GPU_BACKEND "cuda"
@@ -129,6 +129,6 @@ RUN pip3 install streamlit
 
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH /root/.cargo/bin:$PATH
+ENV PATH=/root/.cargo/bin:$PATH
 
 ENTRYPOINT ["/bin/bash"]

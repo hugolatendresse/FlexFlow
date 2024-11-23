@@ -7,7 +7,7 @@ LABEL org.opencontainers.image.description="FlexFlow container"
 
 # Copy FlexFlow repository
 RUN mkdir FlexFlow
-ENV FF_HOME /usr/FlexFlow
+ENV FF_HOME=/usr/FlexFlow
 WORKDIR ${FF_HOME}
 COPY . .
 
