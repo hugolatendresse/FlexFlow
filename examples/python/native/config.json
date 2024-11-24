@@ -1,0 +1,5 @@
+{
+  "num_gpus": 1,
+  "memory_per_gpu": 4000,
+  "zero_copy_memory_per_node": 512
+}
