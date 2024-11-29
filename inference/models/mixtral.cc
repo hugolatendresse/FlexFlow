@@ -333,6 +333,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        final_rms_norm_output,
                        mixtral_config.rms_norm_eps,
                        mixtral_config.hidden_size,
+                       false,
                        DT_NONE,
                        "norm");
 

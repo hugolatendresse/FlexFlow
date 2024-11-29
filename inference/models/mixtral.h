@@ -122,6 +122,7 @@ public:
     bool tie_word_embeddings;
     int vocab_size;
     int max_beam_width, max_beam_depth;
+    RotaryEmbeddingMeta rotary_embedding_meta;
   };
 
   static void create_mixtral_model(FFModel &ff,
