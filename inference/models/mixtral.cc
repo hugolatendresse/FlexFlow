@@ -228,7 +228,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
             .c_str());
     gate = ff.softmax(
         gate,
-        0,
+        -1,
         DT_NONE,
         std::string("layers." + std::to_string(i) + "_block_sparse_moe_softmax")
             .c_str());
@@ -352,7 +352,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
   Tensor output;
   if (mode == BEAM_SEARCH_MODE) {
-    Tensor softmax = ff.softmax(dense, 0);
+    Tensor softmax = ff.softmax(dense, -1);
     // output = ff.beam_top_k(softmax, mixtral_config.max_beam_width, false);
     // output = ff.argmax(softmax, /*beam_Search*/ true);
     output = ff.arg_top_k(softmax, mixtral_config.max_beam_width, false, true);
@@ -361,7 +361,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     // Tensor softmax = ff.softmax(dense, -1);
     if (generation_config.do_sample) {
       dense = ff.scalar_truediv(dense, generation_config.temperature, false);
-      Tensor softmax = ff.softmax(dense, 0);
+      Tensor softmax = ff.softmax(dense, -1);
       output = ff.sampling(softmax, generation_config.topp);
     } else {
       // output = ff.arg_top_k(dense, /*k=*/1, false);
