@@ -277,7 +277,7 @@ void FlexFlow::top_level_task(Task const *task,
 
   rm->start_background_server(&model);
 
-  int total_num_requests = 0;
+  int total_num_requests = 0; // ERRORING OUT HERE
   {
     using json = nlohmann::json;
     std::ifstream file_handle(file_paths.prompt_file_path);
