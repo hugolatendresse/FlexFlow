@@ -320,15 +320,23 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                           "lm_head");
 
   Tensor output;
+  if (mode == BEAM_SEARCH_MODE) {
+    Tensor softmax = ff.softmax(dense, -1);
+    // output = ff.beam_top_k(softmax, mixtral_config.max_beam_width, false);
+    // output = ff.argmax(softmax, /*beam_Search*/ true);
+    output = ff.arg_top_k(softmax, mixtral_config.max_beam_width, false, true);
+    // output = ff.top_k(softmax, )
+  } else {
     // Tensor softmax = ff.softmax(dense, -1);
     if (generation_config.do_sample) {
       dense = ff.scalar_truediv(dense, generation_config.temperature, false);
       Tensor softmax = ff.softmax(dense, -1);
       output = ff.sampling(softmax, generation_config.topp);
     } else {
-      Tensor softmax = ff.softmax(dense, -1); // TODO added that to copy llama
-      output = ff.argmax(softmax, /*beam_Search*/ false);
+      // output = ff.arg_top_k(dense, /*k=*/1, false);
+      output = ff.argmax(dense, /*beam_Search*/ false);
     }
+  }
 
   FileDataLoader *fileloader = new FileDataLoader(
       "",
