@@ -56,7 +56,7 @@ python ./tests/inference/huggingface_inference.py \
     --use-full-precision \
     --inference-debugging
 
-NUM_GPUS="1" #$((TP_DEGREE * PP_DEGREE))
+NUM_GPUS=1 #$((TP_DEGREE * PP_DEGREE))
 json_config=$(cat <<-END
     {
         "num_gpus": ${NUM_GPUS},
