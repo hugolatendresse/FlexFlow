@@ -123,15 +123,15 @@ Aggregate::Aggregate(FFModel &model,
   // assigned per block, so requires to check that
   // https://stackoverflow.com/questions/5531247/allocating-shared-memory/5531640#5531640
 
-  printf('_inputs[0]->dims[1].size = %d\n', _inputs[0]->dims[1].size);
-  printf('_inputs[0]->dims[1].degree = %d\n', _inputs[0]->dims[1].degree);
-  printf('_inputs[0]->dims[1].parallel_idx = %d\n', _inputs[0]->dims[1].parallel_idx);
-  printf('_inputs[0]->dims[1].is_replica_dim = %d\n', _inputs[0]->dims[1].is_replica_dim);
+  printf("_inputs[0]->dims[1].size = %d\n", _inputs[0]->dims[1].size);
+  printf("_inputs[0]->dims[1].degree = %d\n", _inputs[0]->dims[1].degree);
+  printf("_inputs[0]->dims[1].parallel_idx = %d\n", _inputs[0]->dims[1].parallel_idx);
+  printf("_inputs[0]->dims[1].is_replica_dim = %d\n", _inputs[0]->dims[1].is_replica_dim);
 
-  printf('_inputs[0]->dims[2].size = %d\n', _inputs[0]->dims[2].size);
-  printf('_inputs[0]->dims[2].degree = %d\n', _inputs[0]->dims[2].degree);
-  printf('_inputs[0]->dims[2].parallel_idx = %d\n', _inputs[0]->dims[2].parallel_idx);
-  printf('_inputs[0]->dims[2].is_replica_dim = %d\n', _inputs[0]->dims[2].is_replica_dim);
+  printf("_inputs[0]->dims[2].size = %d\n", _inputs[0]->dims[2].size);
+  printf("_inputs[0]->dims[2].degree = %d\n", _inputs[0]->dims[2].degree);
+  printf("_inputs[0]->dims[2].parallel_idx = %d\n", _inputs[0]->dims[2].parallel_idx);
+  printf("_inputs[0]->dims[2].is_replica_dim = %d\n", _inputs[0]->dims[2].is_replica_dim);
 
 //  assert(n <= AGGREGATE_MAX_N && "Increase AGGREGATE_MAX_N in #define");
 //  assert(inputs[0]->dims[0].size <= AGGREGATE_MAX_K &&
