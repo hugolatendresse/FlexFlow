@@ -60,6 +60,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                               embed_init,
                               "embed_tokens");
 
+  printf("token before iteration dims are %d %d %d %d\n", token->dims[0].size, token->dims[1].size, token->dims[2].size, token->dims[3].size);
+
   Tensor mlp_out = nullptr;
 
   for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
@@ -91,6 +93,10 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
       token = token_att_norm[0];
       att_norm = token_att_norm[1];
     }
+
+    printf("token before MHA are %d %d %d %d\n", token->dims[0].size, token->dims[1].size, token->dims[2].size, token->dims[3].size);
+
+
     Tensor qkv_proj = ff.dense(
           att_norm,
           mixtral_config.hidden_size *
@@ -166,6 +172,9 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     token = token_ff_norm[0];
     Tensor ff_norm = token_ff_norm[1];
 
+    printf("token before moe dims are %d %d %d %d\n", token->dims[0].size, token->dims[1].size, token->dims[2].size, token->dims[3].size);
+
+
     // MoE
 	Tensor w1 = ff.dense(
         			   ff_norm,
@@ -207,7 +216,10 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        REG_MODE_NONE,
                        0.0f,
                        std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_1_w2").c_str());
-  }
+
+  printf("mlp_out dims are %d %d %d %d\n", mlp_out->dims[0].size, mlp_out->dims[1].size, mlp_out->dims[2].size, mlp_out->dims[3].size);
+
+ }
   // final normalization and linear
   Tensor final_rms_norm_output[2] = {nullptr, nullptr};
   ff.residual_rms_norm(token,
