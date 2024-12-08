@@ -15,13 +15,6 @@
 
 #include "mixtral.h"
 
-//#define MIXTRAL_DEBUG
-#ifdef MIXTRAL_DEBUG
-#define dbg_printf(...) printf(__VA_ARGS__)
-#else
-#define dbg_printf(...)
-#endif
-
 namespace FlexFlow {
 
 using namespace Legion;
@@ -70,8 +63,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
   Tensor mlp_out = nullptr;
 
   for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
-    dbg_printf("mixtral hidden layer %d\n", i);
-
     // set transformer layer id
     ff.set_transformer_layer_id(i);
 
@@ -118,50 +109,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     Tensor mha;
     switch (mode) {
-      case BEAM_SEARCH_MODE: {
-        mha = ff.spec_inc_multiquery_self_attention(
-            qkv_proj,
-            mixtral_config.hidden_size,
-            mixtral_config.num_attention_heads,
-            mixtral_config.num_key_value_heads,
-            mixtral_config.hidden_size / mixtral_config.num_attention_heads,
-            mixtral_config.hidden_size / mixtral_config.num_attention_heads,
-            0.0f,    /*dropout*/
-            false,   /*add_zero_attn*/
-            DT_NONE, /*data_type*/
-            NULL,    /*kernel_initializer*/
-            mixtral_config.rotary_embedding_meta,
-            false, /*scaling query*/
-            1.0f,  /*scaling factor*/
-            true,  /*qk_prod_scaling*/
-            false, /*position_bias*/
-            std::string("layers." + std::to_string(i) + ".self_attn")
-                .c_str() /*name*/
-        );
-        break;
-      }
-      case TREE_VERIFY_MODE: {
-        mha = ff.inc_multiquery_self_attention_verify(
-            qkv_proj,
-            mixtral_config.hidden_size,
-            mixtral_config.num_attention_heads,
-            mixtral_config.num_key_value_heads,
-            mixtral_config.hidden_size / mixtral_config.num_attention_heads,
-            mixtral_config.hidden_size / mixtral_config.num_attention_heads,
-            0.0f,    /*dropout*/
-            false,   /*add_zero_attn*/
-            DT_NONE, /*data_type*/
-            nullptr, /*kernel_initializer*/
-            mixtral_config.rotary_embedding_meta,
-            false, /*scaling query*/
-            1.0f,  /*scaling factor*/
-            true,  /*qk_prod_scaling*/
-            false, /*position_bias*/
-            std::string("layers." + std::to_string(i) + ".self_attn")
-                .c_str() /*name*/
-        );
-        break;
-      }
       case INC_DECODING_MODE: {
         mha = ff.inc_multiquery_self_attention(
             qkv_proj,
@@ -220,150 +167,47 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor ff_norm = token_ff_norm[1];
 
     // MoE
-    Tensor gate = ff.dense(
-        ff_norm, // (hidden_size, 1, 128)
-        mixtral_config.num_local_experts,
-        AC_MODE_NONE,
-        false,
-        DT_NONE,
-        nullptr,
-        nullptr,
-        nullptr,
-        REG_MODE_NONE,
-        0.0f,
-        std::string("layers." + std::to_string(i) + ".block_sparse_moe_gate")
-            .c_str());
+	Tensor w1 = ff.dense(
+        			   ff_norm,
+                       mixtral_config.intermediate_size,
+                       AC_MODE_NONE,
+                       false,
+                       DT_NONE,
+                       nullptr,
+                       nullptr,
+                       nullptr,
+                       REG_MODE_NONE,
+                       0.0f,
+                       std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_1_w1").c_str());
 
-    gate = ff.softmax( // This operation fails!
-        gate, // (num_experts, 1, 128)
-        0,
-        DT_NONE,
-        std::string("layers." + std::to_string(i) + ".block_sparse_moe_softmax")
-            .c_str());
+  	Tensor w3 = ff.dense(
+            		   ff_norm,
+                       mixtral_config.intermediate_size,
+                       AC_MODE_NONE,
+                       false,
+                       DT_NONE,
+                       nullptr,
+                       nullptr,
+                       nullptr,
+                       REG_MODE_NONE,
+                       0.0f,
+                       std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_1_w3").c_str());
 
-    Tensor topk_out[2] = {nullptr, nullptr};
-    ff.top_k(
-        gate, // (num_experts, 1, 128)
-        topk_out,
-        mixtral_config.num_experts_per_tok,
-        false,
-        std::string("layers." + std::to_string(i) + ".block_sparse_moe_topk")
-            .c_str());
-    Tensor topk_values = topk_out[0]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
-    Tensor topk_indices = topk_out[1]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
+  Tensor multi = ff.sigmoid_silu_multi(w1, w3); //DT_NONE,std::string("layers." + std::to_string(i) +".block_sparse_moe_experts." +std::to_string(expert_idx) + "ssm").c_str());
 
-    Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
-    ff.group_by(
-        ff_norm,
-        topk_indices,
-        grouped_tokens,
-        mixtral_config.num_local_experts,
-        0.0f,
-        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
-            .c_str());
-
-    // grouped_tokens[0] has dims (1024, 1, 0)
-    Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
-    Tensor one_aggregate_inputs[1] = {nullptr};
-    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
-      Tensor w1 = ff.dense(grouped_tokens[expert_idx],
-                           mixtral_config.intermediate_size,
-                           AC_MODE_NONE,
-                           false,
-                           DT_NONE,
-                           nullptr,
-                           nullptr,
-                           nullptr,
-                           REG_MODE_NONE,
-                           0.0f,
-                           std::string("layers." + std::to_string(i) +
-                                       ".block_sparse_moe_experts_" +
-                                       std::to_string(expert_idx) + "_w1")
-                               .c_str());
-
-      Tensor w3 = ff.dense(grouped_tokens[expert_idx],
-                           mixtral_config.intermediate_size,
-                           AC_MODE_NONE,
-                           false,
-                           DT_NONE,
-                           nullptr,
-                           nullptr,
-                           nullptr,
-                           REG_MODE_NONE,
-                           0.0f,
-                           std::string("layers." + std::to_string(i) +
-                                       ".block_sparse_moe_experts_" +
-                                       std::to_string(expert_idx) + "_w3")
-                               .c_str());
-
-      Tensor multi =
-          ff.sigmoid_silu_multi(w1,
-                                w3,
-                                DT_NONE,
-                                std::string("layers." + std::to_string(i) +
-                                            ".block_sparse_moe_experts_" +
-                                            std::to_string(expert_idx) + "ssm")
-                                    .c_str());
-
-      Tensor w2 = ff.dense(multi,
-                           mixtral_config.hidden_size,
-                           AC_MODE_NONE,
-                           false,
-                           DT_NONE,
-                           nullptr,
-                           nullptr,
-                           nullptr,
-                           REG_MODE_NONE,
-                           0.0f,
-                           std::string("layers." + std::to_string(i) +
-                                       ".block_sparse_moe_experts_" +
-                                       std::to_string(expert_idx) + "_w2")
-                               .c_str());
-      // w2 and aggreagte_inputs[4+] have dims (1024, 1, 0)
-
-      aggregate_inputs[4 + expert_idx] = w2; // w2 has 3 dimensions
-      one_aggregate_inputs[0] = w2;
-    }
-
-    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
-    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
-
-    Tensor dummy_gate = ff.dense(
-        ff_norm,
-        mixtral_config.num_local_experts,
-        AC_MODE_NONE,
-        false,
-        DT_NONE,
-        nullptr,
-        nullptr,
-        nullptr,
-        REG_MODE_NONE,
-        0.0f,
-        std::string("layers." + std::to_string(i) + ".block_sparse_moe_gate")
-            .c_str());
-
-    dummy_gate = ff.softmax(
-        gate,
-        0,
-        DT_NONE,
-        std::string("dummy_gate").c_str());
-
-    aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
-    aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
-    aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
-    aggregate_inputs[3] = dummy_gate;  // TODO this is a tmp fix
-//    aggregate_inputs[2] = aggregate_inputs[3] = nullptr;
-
-    mlp_out = aggregate_inputs[5];
-//    mlp_out = ff.aggregate(aggregate_inputs,
-////                           topk_values->dims[2],
-//                           mixtral_config.num_local_experts,
-//                           0.0f,
-//                           std::string("layers." + std::to_string(i) +
-//                                       ".block_sparse_moe_experts_aggregate")
-//                               .c_str());
+  mlp_out = ff.dense(
+      				   multi,
+                       mixtral_config.hidden_size,
+                       AC_MODE_NONE,
+                       false,
+                       DT_NONE,
+                       nullptr,
+                       nullptr,
+                       nullptr,
+                       REG_MODE_NONE,
+                       0.0f,
+                       std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_1_w2").c_str());
   }
-
   // final normalization and linear
   Tensor final_rms_norm_output[2] = {nullptr, nullptr};
   ff.residual_rms_norm(token,
