@@ -168,8 +168,23 @@ Aggregate::Aggregate(FFModel &model,
   for (int i = 0; i < num_dim - 1; i++) {
     dims[i] = inputs[4]->dims[i];
   }
-  dims[num_dim - 2] = inputs[0]->dims[num_dim - 2];
-  dims[num_dim - 1] = inputs[0]->dims[num_dim - 1];
+
+  // TODO replace with inputs[0]->dims[num_dim - 2]
+  ParallelDim topk_values_penultimate_dim;
+  topk_values_penultimate_dim.size = 1;
+  topk_values_penultimate_dim.degree = 1;
+  topk_values_penultimate_dim.parallel_idx = -1;
+  topk_values_penultimate_dim.is_replica_dim = false;
+
+  // TODO replace with inputs[0]->dims[num_dim - 1]
+  ParallelDim topk_values_last_dim;
+  topk_values_last_dim.size = 128;
+  topk_values_last_dim.degree = 1;
+  topk_values_last_dim.parallel_idx = -1;
+  topk_values_last_dim.is_replica_dim = false;
+
+  dims[num_dim - 2] = topk_values_penultimate_dim;
+  dims[num_dim - 1] = topk_values_last_dim;
   numOutputs = 1;
   outputs[0] = model.create_parallel_tensor_legion_ordering(
       num_dim, dims, DT_FLOAT, this);
