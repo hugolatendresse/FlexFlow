@@ -3,10 +3,10 @@ set -x
 set -e
 
 MODEL_NAME=${MODEL_NAME:-"JackFram/llama-160m"}
-MEMORY_PER_GPU=${MEMORY_PER_GPU:-14000}
-ZCOPY_MEMORY=${ZCOPY_MEMORY:-40000}
-TP_DEGREE=${TP_DEGREE:-2}
-PP_DEGREE=${PP_DEGREE:-2}
+MEMORY_PER_GPU=${MEMORY_PER_GPU:-21000}
+ZCOPY_MEMORY=${ZCOPY_MEMORY:-21000}
+TP_DEGREE=${TP_DEGREE:-1}
+PP_DEGREE=${PP_DEGREE:-1}
 CACHE_PATH=${FF_CACHE_PATH:-"~/.cache/flexflow"}
 NUM_STEPS=${NUM_STEPS:-2}
 
@@ -56,7 +56,7 @@ python ./tests/inference/huggingface_inference.py \
     --use-full-precision \
     --inference-debugging
 
-NUM_GPUS=$((TP_DEGREE * PP_DEGREE))
+NUM_GPUS="1" #$((TP_DEGREE * PP_DEGREE))
 json_config=$(cat <<-END
     {
         "num_gpus": ${NUM_GPUS},
