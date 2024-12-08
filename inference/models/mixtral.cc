@@ -15,6 +15,13 @@
 
 #include "mixtral.h"
 
+//#define MIXTRAL_DEBUG
+#ifdef MIXTRAL_DEBUG
+#define dbg_printf(...) printf(__VA_ARGS__)
+#else
+#define dbg_printf(...)
+#endif
+
 namespace FlexFlow {
 
 using namespace Legion;
@@ -59,12 +66,13 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                               NULL,
                               embed_init,
                               "embed_tokens");
-
-  printf("token before iteration dims are %d %d %d %d\n", token->dims[0], token->dims[1], token->dims[2], token->dims[3]);
+  // token has dimensions (hidden_size, 1, 128)
 
   Tensor mlp_out = nullptr;
 
   for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
+    dbg_printf("mixtral hidden layer %d\n", i);
+
     // set transformer layer id
     ff.set_transformer_layer_id(i);
 
@@ -93,8 +101,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
       token = token_att_norm[0];
       att_norm = token_att_norm[1];
     }
+    // token has dimensions (hidden_size, 1, 128)
 
-    printf("token before MHA are %d %d %d %d\n", token->dims[0], token->dims[1], token->dims[2], token->dims[3]);
 
 
     Tensor qkv_proj = ff.dense(
@@ -115,6 +123,50 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     Tensor mha;
     switch (mode) {
+      case BEAM_SEARCH_MODE: {
+        mha = ff.spec_inc_multiquery_self_attention(
+            qkv_proj,
+            mixtral_config.hidden_size,
+            mixtral_config.num_attention_heads,
+            mixtral_config.num_key_value_heads,
+            mixtral_config.hidden_size / mixtral_config.num_attention_heads,
+            mixtral_config.hidden_size / mixtral_config.num_attention_heads,
+            0.0f,    /*dropout*/
+            false,   /*add_zero_attn*/
+            DT_NONE, /*data_type*/
+            NULL,    /*kernel_initializer*/
+            mixtral_config.rotary_embedding_meta,
+            false, /*scaling query*/
+            1.0f,  /*scaling factor*/
+            true,  /*qk_prod_scaling*/
+            false, /*position_bias*/
+            std::string("layers." + std::to_string(i) + ".self_attn")
+                .c_str() /*name*/
+        );
+        break;
+      }
+      case TREE_VERIFY_MODE: {
+        mha = ff.inc_multiquery_self_attention_verify(
+            qkv_proj,
+            mixtral_config.hidden_size,
+            mixtral_config.num_attention_heads,
+            mixtral_config.num_key_value_heads,
+            mixtral_config.hidden_size / mixtral_config.num_attention_heads,
+            mixtral_config.hidden_size / mixtral_config.num_attention_heads,
+            0.0f,    /*dropout*/
+            false,   /*add_zero_attn*/
+            DT_NONE, /*data_type*/
+            nullptr, /*kernel_initializer*/
+            mixtral_config.rotary_embedding_meta,
+            false, /*scaling query*/
+            1.0f,  /*scaling factor*/
+            true,  /*qk_prod_scaling*/
+            false, /*position_bias*/
+            std::string("layers." + std::to_string(i) + ".self_attn")
+                .c_str() /*name*/
+        );
+        break;
+      }
       case INC_DECODING_MODE: {
         mha = ff.inc_multiquery_self_attention(
             qkv_proj,
@@ -169,13 +221,56 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         DT_NONE,
         std::string("layers." + std::to_string(i) + ".post_attention_layernorm")
             .c_str());
-    token = token_ff_norm[0];
+    token = token_ff_norm[0];   // token has dimensions (hidden_size, 1, 128)
     Tensor ff_norm = token_ff_norm[1];
 
-    printf("token before moe dims are %d %d %d %d\n", token->dims[0], token->dims[1], token->dims[2], token->dims[3]);
-
-
     // MoE
+    Tensor gate = ff.dense(
+        ff_norm, // (hidden_size, 1, 128)
+        mixtral_config.num_local_experts,
+        AC_MODE_NONE,
+        false,
+        DT_NONE,
+        nullptr,
+        nullptr,
+        nullptr,
+        REG_MODE_NONE,
+        0.0f,
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_gate")
+            .c_str());
+
+    gate = ff.softmax( // This operation fails!
+        gate, // (num_experts, 1, 128)
+        0,
+        DT_NONE,
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_softmax")
+            .c_str());
+
+        Tensor topk_out[2] = {nullptr, nullptr};
+    ff.top_k(
+        gate, // (num_experts, 1, 128)
+        topk_out,
+        mixtral_config.num_experts_per_tok,
+        false,
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_topk")
+            .c_str());
+    Tensor topk_values = topk_out[0]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
+    Tensor topk_indices = topk_out[1]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
+
+    Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
+    ff.group_by(
+        ff_norm,
+        topk_indices,
+        grouped_tokens,
+        mixtral_config.num_local_experts,
+        0.0f,
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
+            .c_str());
+
+    // grouped_tokens[0] has dims (1024, 1, 0)
+    Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
+    Tensor one_aggregate_inputs[1] = {nullptr};
+
 	Tensor w1 = ff.dense(
         			   ff_norm,
                        mixtral_config.intermediate_size,
@@ -217,7 +312,11 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        0.0f,
                        std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_1_w2").c_str());
 
-  printf("mlp_out dims are %d %d %d %d\n", mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
+  // mlp_out has dimensions (hidden_size, 1, 128)
+  printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
+  assert(mlp_out->dims[0] == mixtral_config.hidden_size) && "mlp_out dims[0] != hidden_size";
+  assert(mlp_out->dims[1] == 1) && "mlp_out dims[1] != 1";
+  assert(mlp_out->dims[2] == 128) && "mlp_out dims[2] != 128";
 
  }
   // final normalization and linear
