@@ -276,6 +276,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     // grouped_tokens[0] has dims (1024, 1, 0)
 
+
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     Tensor one_aggregate_inputs[1] = {nullptr};
 
