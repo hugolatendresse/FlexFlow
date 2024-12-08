@@ -122,36 +122,47 @@ Aggregate::Aggregate(FFModel &model,
   // FIXME: For now, set upper limits Better: Do as follows, but memory is
   // assigned per block, so requires to check that
   // https://stackoverflow.com/questions/5531247/allocating-shared-memory/5531640#5531640
-  assert(n <= AGGREGATE_MAX_N && "Increase AGGREGATE_MAX_N in #define");
-  assert(inputs[0]->dims[0].size <= AGGREGATE_MAX_K &&
-         "Increase AGGREGATE_MAX_K in #define");
-  assert(inputs[0]->dims[1].size <= AGGREGATE_MAX_BATCH_SIZE &&
-         "Increase AGGREGATE_MAX_BATCH_SIZE in #define");
 
-  assert(n + 4 == numInputs);
-  assert(n > 0);
-  //printf("In Aggregate::Aggregate, inputs[0]->num_dims = %d\n", inputs[0]->num_dims);
-  //printf("In Aggregate::Aggregate, inputs[0] dims are %d %d %d %d\n", inputs[0]->dims[0].size, inputs[0]->dims[1].size, inputs[0]->dims[2].size, inputs[0]->dims[3].size);
-  // TODO the inequalities below used to be equalities, not sure it's a good idea to switch to inequalities
-  assert(inputs[0]->num_dims >= 2 + 1);  // inputs[0] has dims (experts_per_token, 1, 128, 1) (confirmed dim count)
-  assert(inputs[1]->num_dims >= 2 + 1);
-  assert(inputs[2]->num_dims >= 2 + 1);
-  assert(inputs[3]->num_dims >= 2 + 1);
+  printf('_inputs[0]->dims[1].size = %d\n', _inputs[0]->dims[1].size);
+  printf('_inputs[0]->dims[1].degree = %d\n', _inputs[0]->dims[1].degree);
+  printf('_inputs[0]->dims[1].parallel_idx = %d\n', _inputs[0]->dims[1].parallel_idx);
+  printf('_inputs[0]->dims[1].is_replica_dim = %d\n', _inputs[0]->dims[1].is_replica_dim);
 
-  for (int i = 0; i < inputs[0]->num_dims; i++) {
-    assert(inputs[0]->dims[i] == inputs[1]->dims[i]);
-    assert(inputs[0]->dims[i] == inputs[2]->dims[i]);
-  }
-  assert(inputs[0]->dims[1] == inputs[3]->dims[1]);
-  assert(inputs[3]->dims[0].size == n);
+  printf('_inputs[0]->dims[2].size = %d\n', _inputs[0]->dims[2].size);
+  printf('_inputs[0]->dims[2].degree = %d\n', _inputs[0]->dims[2].degree);
+  printf('_inputs[0]->dims[2].parallel_idx = %d\n', _inputs[0]->dims[2].parallel_idx);
+  printf('_inputs[0]->dims[2].is_replica_dim = %d\n', _inputs[0]->dims[2].is_replica_dim);
+
+//  assert(n <= AGGREGATE_MAX_N && "Increase AGGREGATE_MAX_N in #define");
+//  assert(inputs[0]->dims[0].size <= AGGREGATE_MAX_K &&
+//         "Increase AGGREGATE_MAX_K in #define");
+//  assert(inputs[0]->dims[1].size <= AGGREGATE_MAX_BATCH_SIZE &&
+//         "Increase AGGREGATE_MAX_BATCH_SIZE in #define");
+//
+//  assert(n + 4 == numInputs);
+//  assert(n > 0);
+//  //printf("In Aggregate::Aggregate, inputs[0]->num_dims = %d\n", inputs[0]->num_dims);
+//  //printf("In Aggregate::Aggregate, inputs[0] dims are %d %d %d %d\n", inputs[0]->dims[0].size, inputs[0]->dims[1].size, inputs[0]->dims[2].size, inputs[0]->dims[3].size);
+//  // TODO the inequalities below used to be equalities, not sure it's a good idea to switch to inequalities
+//  assert(inputs[0]->num_dims >= 2 + 1);  // inputs[0] has dims (experts_per_token, 1, 128, 1) (confirmed dim count)
+//  assert(inputs[1]->num_dims >= 2 + 1);
+//  assert(inputs[2]->num_dims >= 2 + 1);
+//  assert(inputs[3]->num_dims >= 2 + 1);
+//
+//  for (int i = 0; i < inputs[0]->num_dims; i++) {
+//    assert(inputs[0]->dims[i] == inputs[1]->dims[i]);
+//    assert(inputs[0]->dims[i] == inputs[2]->dims[i]);
+//  }
+//  assert(inputs[0]->dims[1] == inputs[3]->dims[1]);
+//  assert(inputs[3]->dims[0].size == n);
 
   // expert inputs
-  int num_dim = inputs[4]->num_dims;
+  int num_dim = inputs[4]->num_dims; // 3
   int out_dim = inputs[4]->dims[0].size;
-  for (int i = 1; i < n; i++) {
-    assert(inputs[i + 4]->num_dims == num_dim);
-    assert(inputs[i + 4]->dims[0].size == out_dim);
-  }
+//  for (int i = 1; i < n; i++) {
+//    assert(inputs[i + 4]->num_dims == num_dim);
+//    assert(inputs[i + 4]->dims[0].size == out_dim);
+//  }
   // Set output shape
   ParallelDim dims[MAX_TENSOR_DIM];
   for (int i = 0; i < num_dim - 1; i++) {

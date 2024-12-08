@@ -264,6 +264,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     // grouped_tokens[0] has dims (1024, 1, 0)
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
+    Tensor one_aggregate_inputs[1] = {nullptr};
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
       Tensor w1 = ff.dense(grouped_tokens[expert_idx],
                            mixtral_config.intermediate_size,
@@ -321,6 +322,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
       // w2 and aggreagte_inputs[4+] have dims (1024, 1, 0)
 
       aggregate_inputs[4 + expert_idx] = w2; // w2 has 3 dimensions
+      one_aggregate_inputs[0] = w2;
     }
 
     Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
@@ -352,6 +354,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[3] = dummy_gate;  // TODO this is a tmp fix
 //    aggregate_inputs[2] = aggregate_inputs[3] = nullptr;
     mlp_out = ff.aggregate(aggregate_inputs,
+//                           topk_values->dims[2],
                            mixtral_config.num_local_experts,
                            0.0f,
                            std::string("layers." + std::to_string(i) +
