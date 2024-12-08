@@ -103,4 +103,4 @@ echo "Inference alignment tests passed (model ${MODEL_NAME})!"
 echo ""
 
 # Cleanup after the test
-cleanup
+# cleanup
