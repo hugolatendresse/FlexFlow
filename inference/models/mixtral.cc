@@ -281,8 +281,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor one_aggregate_inputs[1] = {nullptr};
 
     // TODO don't use only one expert
-  //    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
-    for (int expert_idx = 1; expert_idx < 2; expert_idx++) {
+    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
+//    for (int expert_idx = 1; expert_idx < 2; expert_idx++) {
 	Tensor w1 = ff.dense(
         			   ff_norm,
                        mixtral_config.intermediate_size,
@@ -329,7 +329,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
     }
 
-        // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
+      // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
 //       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
 //    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
 
@@ -353,10 +353,10 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //        DT_NONE,
 //        std::string("dummy_gate").c_str());
 //
-        aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
+    aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
     aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
     aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
-    aggregate_inputs[3] = gate;  // TODO this is a tmp fix
+    aggregate_inputs[3] = gate;  // TODO this is a tmp fix TODO decide vs dummygate
 
         mlp_out = aggregate_inputs[5]; // TODO don't use just one expert
 //    mlp_out = ff.aggregate(aggregate_inputs,
