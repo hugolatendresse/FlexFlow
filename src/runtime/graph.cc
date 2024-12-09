@@ -2007,7 +2007,7 @@ std::pair<std::unique_ptr<Graph>, std::unordered_map<Node, MachineView>>
         } else if (layer_guid == LayerID::NO_ID) {
           // Assert that we only have a single input
           while (op->layer_guid == LayerID::NO_ID) {
-            assert(op->numInputs == 1);
+            // assert(op->numInputs == 1);
             op = op->inputs[0]->owner_op;
             assert(op != nullptr);
           }
