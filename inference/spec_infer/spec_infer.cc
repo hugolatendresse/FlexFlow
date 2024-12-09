@@ -290,7 +290,7 @@ void FlexFlow::top_level_task(Task const *task,
   FFConfig ffconfig;
   FilePaths file_paths;
   ModelMeta model_metadata;
-  bool use_full_precision = true;
+  bool use_full_precision = false;
   bool verbose = false;
   int max_requests_per_batch = 16;
   int max_tokens_per_batch = 256;
