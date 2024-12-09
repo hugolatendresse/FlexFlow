@@ -62,6 +62,7 @@ void FFModel::group_by(const Tensor input,
     int dims[num_dims];
     for (int i = 0; i < num_dims - 1; i++) {
       dims[i] = input->dims[i];
+      printf("All outputs of group_by with have dims[%d] = %d\n", i, dims[i]);
     }
     // Batch dimension is replaced by max expert capacity
     if (alpha != 0.0f) {

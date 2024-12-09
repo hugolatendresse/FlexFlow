@@ -235,14 +235,14 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     Tensor topk_out[2] = {nullptr, nullptr};
     ff.top_k(
-        gate,
+        gate, // (num_experts, 1, 128)
         topk_out,
         mixtral_config.num_experts_per_tok,
         false,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_topk")
             .c_str());
-    Tensor topk_values = topk_out[0];
-    Tensor topk_indices = topk_out[1];
+    Tensor topk_values = topk_out[0]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
+    Tensor topk_indices = topk_out[1];  // (experts_per_tok, 1, 128) (confirmed 3 dims)
 
     Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
     ff.group_by(
