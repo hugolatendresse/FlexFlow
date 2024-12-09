@@ -695,6 +695,7 @@ namespace std {
 size_t hash<FlexFlow::AggregateParams>::operator()(
     FlexFlow::AggregateParams const &params) const {
   size_t key = 0;
+  hash_combine(key, params.layer_guid.id);
   hash_combine(key, params.n);
   hash_combine(key, params.lambda_bal);
   return key;
