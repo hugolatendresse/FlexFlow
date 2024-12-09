@@ -171,10 +171,9 @@ Aggregate::Aggregate(FFModel &model,
 }
 
 Aggregate::Aggregate(FFModel &model,
-                     LayerID const &_layer_guid,
                      Aggregate const &other,
                      std::vector<ParallelTensor> const &inputs)
-    : Aggregate(model, _layer_guid, inputs.data(), other.n, other.lambda_bal, other.name) {}
+    : Aggregate(model, other.layer_guid, inputs.data(), other.n, other.lambda_bal, other.name) {}
 
 Aggregate::Aggregate(FFModel &model,
                      AggregateParams const &params,

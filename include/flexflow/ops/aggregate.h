@@ -32,7 +32,6 @@ public:
             float _lambda_bal,
             char const *name = nullptr);
   Aggregate(FFModel &model,
-            LayerID const &_layer_guid,
             Aggregate const &other,
             std::vector<ParallelTensor> const &inputs);
   Aggregate(FFModel &model,
