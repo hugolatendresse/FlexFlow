@@ -264,15 +264,14 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
 //    TODO understand why graph.cc complains that last layer has multiple inputs
 //      Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
-//      ff.group_by(
-//          ff_norm,
-//          topk_indices,
-//          grouped_tokens,
-//          mixtral_config.num_local_experts,
-//          0.0f,
-//          std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby").c_str());
-//    }
-
+      ff.group_by(
+          ff_norm,
+          topk_indices,
+          grouped_tokens,
+          mixtral_config.num_local_experts,
+          0.0f,
+          std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby").c_str());
+    }
     // grouped_tokens[0] has dims (1024, 1, 0)
 
 // TODO all experts
