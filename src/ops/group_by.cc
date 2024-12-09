@@ -338,7 +338,7 @@ void Group_by::forward_task(Task const *task,
   // get input and assign regions. Each tensor has three dimensions:
   // (datapoint_dim, batch_size, replica_dim)
   GenericTensorAccessorR input = helperGetGenericTensorAccessorRO(
-      data_type, regions[0], task->regions[0], FID_DATA, ctx, runtime);
+      DT_FLOAT, regions[0], task->regions[0], FID_DATA, ctx, runtime);
   GenericTensorAccessorR assign = helperGetGenericTensorAccessorRO(
       DT_INT32, regions[1], task->regions[1], FID_DATA, ctx, runtime);
   Domain input_domain = runtime->get_index_space_domain(
