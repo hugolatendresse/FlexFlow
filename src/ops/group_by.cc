@@ -41,6 +41,7 @@ using Legion::TaskArgument;
 using Legion::TaskLauncher;
 using PCG::Node;
 
+// creates the layer (jhigher level)
 void FFModel::group_by(const Tensor input,
                        const Tensor assign,
                        Tensor *outputs,
@@ -59,19 +60,25 @@ void FFModel::group_by(const Tensor input,
   {
     int k = assign->dims[0];
     int num_dims = input->num_dims;
-    int dims[num_dims];
-    for (int i = 0; i < num_dims - 1; i++) {
-      dims[i] = input->dims[i];
-    }
-    // Batch dimension is replaced by max expert capacity
-    if (alpha != 0.0f) {
-      dims[num_dims - 1] = (int)ceil(alpha * k / n * input->dims[num_dims - 1]);
-    }
+//    int dims[num_dims];
+//    for (int i = 0; i < num_dims - 1; i++) {
+//      dims[i] = input->dims[i];
+//    }
+//    // Batch dimension is replaced by max expert capacity
+//    if (alpha != 0.0f) {
+//      dims[num_dims - 1] = (int)ceil(alpha * k / n * input->dims[num_dims - 1]);
+//    }
+
+    int dims[] = {1024, 1, 128};
+
     for (int i = 0; i < n; i++) {
       // Creating one tensor per expert, each with size (DATA_DIMS,
       // max_expert_capacity)
       li->outputs[i] = create_tensor_legion_ordering(
-          num_dims, dims, input->data_type, li, 0, true /*create_grad*/);
+          // those specify the format of the output
+          num_dims,
+          dims, // array of dims taht we want. I could just set (1024, 1, 128) if I want
+          input->data_type, li, 0, true /*create_grad*/);
     }
   }
   li->add_int_property("n", n);
@@ -84,6 +91,7 @@ void FFModel::group_by(const Tensor input,
   }
 }
 
+// used by compiler to convert the layer to an operator. gets called by "conversions" after the method above gets called
 Op *Group_by::create_operator_from_layer(
     FFModel &model,
     Layer const *layer,
@@ -97,8 +105,10 @@ Op *Group_by::create_operator_from_layer(
   return new Group_by(model, inputs[0], inputs[1], n, alpha, layer->name);
 }
 
+// used by graph.cc. the compiler creates a copy of the opeartor that is identifcal to orginal one
 Group_byParams Group_by::get_params() const {
   Group_byParams params;
+  params.layer_guid = this->layer_guid;
   params.n = this->n;
   params.alpha = this->alpha;
   if (strlen(this->name) < MAX_OPNAME) {
@@ -117,6 +127,7 @@ bool operator==(Group_byParams const &lhs, Group_byParams const &rhs) {
   return lhs.n == rhs.n && lhs.alpha == rhs.alpha;
 }
 
+// consstructor used to create operator , called by conversatoin func
 Group_by::Group_by(FFModel &model,
                    const ParallelTensor _input,
                    const ParallelTensor _assign,
@@ -156,6 +167,7 @@ Group_by::Group_by(FFModel &model,
   numWeights = 0;
 }
 
+// other constructros
 Group_by::Group_by(FFModel &model,
                    Group_by const &other,
                    const ParallelTensor input,
@@ -173,6 +185,9 @@ Group_by::Group_by(FFModel &model,
                params.alpha,
                params.name) {}
 
+// at the very beginning we intiilzae all operators.
+// set up initial meta data
+// happens after compiler does copies of ops, but before inference
 void Group_by::init_inference(FFModel const &ff,
                               std::vector<ParallelTensor> const &batch_inputs,
                               std::vector<ParallelTensor> const &batch_outputs,
@@ -223,6 +238,7 @@ void Group_by::init_inference(FFModel const &ff,
   set_opmeta_from_futuremap_inference(ff, fm, batch_outputs[0]);
 }
 
+// same but for training, ignore
 void Group_by::init(FFModel const &ff) {
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = outputs[0]->parallel_is;
@@ -267,6 +283,7 @@ void Group_by::init(FFModel const &ff) {
   set_opmeta_from_futuremap(ff, fm);
 }
 
+// actual task
 OpMeta *Group_by::init_task(Task const *task,
                             std::vector<PhysicalRegion> const &regions,
                             Context ctx,
@@ -281,6 +298,7 @@ OpMeta *Group_by::init_task(Task const *task,
   return m;
 }
 
+// fortward function for training, ignore
 void Group_by::forward(FFModel const &ff) {
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
@@ -323,54 +341,56 @@ void Group_by::forward(FFModel const &ff) {
   runtime->execute_index_space(ctx, launcher);
 }
 
+// actually does work and calls cuda wrapper
 void Group_by::forward_task(Task const *task,
                             std::vector<PhysicalRegion> const &regions,
                             Context ctx,
                             Runtime *runtime) {
-  int n = (int)regions.size() - 2;
-  assert((int)task->regions.size() == n + 2);
-
-  GroupByMeta *m = *((GroupByMeta **)task->local_args);
-
-  // get input and assign regions. Each tensor has three dimensions:
-  // (datapoint_dim, batch_size, replica_dim)
-  GenericTensorAccessorR input = helperGetGenericTensorAccessorRO(
-      DT_FLOAT, regions[0], task->regions[0], FID_DATA, ctx, runtime);
-  GenericTensorAccessorR assign = helperGetGenericTensorAccessorRO(
-      DT_INT32, regions[1], task->regions[1], FID_DATA, ctx, runtime);
-  Domain input_domain = runtime->get_index_space_domain(
-      ctx, task->regions[0].region.get_index_space());
-  Domain assign_domain = runtime->get_index_space_domain(
-      ctx, task->regions[1].region.get_index_space());
-
-  coord_t input_rows = input_domain.hi()[1] - input_domain.lo()[1] + 1;
-  coord_t input_cols = input_domain.hi()[0] - input_domain.lo()[0] + 1;
-  assert(input_rows == assign_domain.hi()[1] - assign_domain.lo()[1] + 1);
-
-  int k = assign_domain.hi()[0] - assign_domain.lo()[0] + 1;
-  int batch_size = input_rows;
-  int data_dim = input_cols;
-
-  // Create a vector of n outputs, where n is the number of experts.
-  // Each entry in the "outputs" vector points to the Legion tensor that will
-  // contain the tockens dispatched to the corresponding expert
-  std::vector<GenericTensorAccessorW> output_accessors;
-  std::vector<GenericTensorAccessorR> output_accessors_inf_deb;
-  float *outputs[n];
-  for (int i = 0; i < n; i++) {
-    GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
-        DT_FLOAT, regions[i + 2], task->regions[i + 2], FID_DATA, ctx, runtime);
-    output_accessors.push_back(output);
-    GenericTensorAccessorR output_inf_deb = helperGetGenericTensorAccessorRO(
-        DT_FLOAT, regions[i + 2], task->regions[i + 2], FID_DATA, ctx, runtime);
-    output_accessors_inf_deb.push_back(output_inf_deb);
-    Domain out_domain = runtime->get_index_space_domain(
-        ctx, task->regions[i + 2].region.get_index_space());
-    outputs[i] = output.get_float_ptr();
-
-    coord_t output_rows = out_domain.hi()[1] - out_domain.lo()[1] + 1;
-    coord_t output_cols = out_domain.hi()[0] - out_domain.lo()[0] + 1;
-    assert(output_cols == input_cols);
+//  can comment out everythign
+//  int n = (int)regions.size() - 2;
+//  assert((int)task->regions.size() == n + 2);
+//
+//  GroupByMeta *m = *((GroupByMeta **)task->local_args);
+//
+//  // get input and assign regions. Each tensor has three dimensions:
+//  // (datapoint_dim, batch_size, replica_dim)
+//  GenericTensorAccessorR input = helperGetGenericTensorAccessorRO(
+//      DT_FLOAT, regions[0], task->regions[0], FID_DATA, ctx, runtime);
+//  GenericTensorAccessorR assign = helperGetGenericTensorAccessorRO(
+//      DT_INT32, regions[1], task->regions[1], FID_DATA, ctx, runtime);
+//  Domain input_domain = runtime->get_index_space_domain(
+//      ctx, task->regions[0].region.get_index_space());
+//  Domain assign_domain = runtime->get_index_space_domain(
+//      ctx, task->regions[1].region.get_index_space());
+//
+//  coord_t input_rows = input_domain.hi()[1] - input_domain.lo()[1] + 1;
+//  coord_t input_cols = input_domain.hi()[0] - input_domain.lo()[0] + 1;
+//  assert(input_rows == assign_domain.hi()[1] - assign_domain.lo()[1] + 1);
+//
+//  int k = assign_domain.hi()[0] - assign_domain.lo()[0] + 1;
+//  int batch_size = input_rows;
+//  int data_dim = input_cols;
+//
+//  // Create a vector of n outputs, where n is the number of experts.
+//  // Each entry in the "outputs" vector points to the Legion tensor that will
+//  // contain the tockens dispatched to the corresponding expert
+//  std::vector<GenericTensorAccessorW> output_accessors;
+//  std::vector<GenericTensorAccessorR> output_accessors_inf_deb;
+//  float *outputs[n];
+//  for (int i = 0; i < n; i++) {
+//    GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
+//        DT_FLOAT, regions[i + 2], task->regions[i + 2], FID_DATA, ctx, runtime);
+//    output_accessors.push_back(output);
+//    GenericTensorAccessorR output_inf_deb = helperGetGenericTensorAccessorRO(
+//        DT_FLOAT, regions[i + 2], task->regions[i + 2], FID_DATA, ctx, runtime);
+//    output_accessors_inf_deb.push_back(output_inf_deb);
+//    Domain out_domain = runtime->get_index_space_domain(
+//        ctx, task->regions[i + 2].region.get_index_space());
+//    outputs[i] = output.get_float_ptr();
+//
+//    coord_t output_rows = out_domain.hi()[1] - out_domain.lo()[1] + 1;
+//    coord_t output_cols = out_domain.hi()[0] - out_domain.lo()[0] + 1;
+//    assert(output_cols == input_cols);
   }
 
   Group_by::forward_kernel_wrapper(m,
@@ -388,6 +408,8 @@ void Group_by::forward_task(Task const *task,
         m, shard_id, nullptr, {input, assign}, {}, output_accessors_inf_deb);
   }
 }
+
+// fucntion that calls inference task
 
 FutureMap Group_by::inference(FFModel const &ff,
                               BatchConfigFuture const &bc,
@@ -410,8 +432,8 @@ FutureMap Group_by::inference(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
-  // data
-  launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
+  // data // add the regions that will be referenced in the inference_task
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part, // this region will be used for inputs[0]
                                                     0 /*projection id*/,
                                                     READ_ONLY,
                                                     EXCLUSIVE,
@@ -419,7 +441,7 @@ FutureMap Group_by::inference(FFModel const &ff,
   launcher.add_field(0, FID_DATA);
 
   // assign
-  launcher.add_region_requirement(RegionRequirement(batch_outputs[1]->part,
+  launcher.add_region_requirement(RegionRequirement(batch_outputs[1]->part, // this region will be sued for outputs[1]
                                                     0 /*projection id*/,
                                                     READ_ONLY,
                                                     EXCLUSIVE,
@@ -440,6 +462,8 @@ FutureMap Group_by::inference(FFModel const &ff,
   return runtime->execute_index_space(ctx, launcher);
 }
 
+// this should be identifcal for forward_task, but forward_Task won't have an effect
+// inference_task is the one used in our case. Comment out this one !!!!!
 void Group_by::inference_task(Task const *task,
                               std::vector<PhysicalRegion> const &regions,
                               Context ctx,
@@ -455,11 +479,12 @@ void Group_by::inference_task(Task const *task,
       DT_FLOAT, regions[0], task->regions[0], FID_DATA, ctx, runtime);
   GenericTensorAccessorR assign = helperGetGenericTensorAccessorRO(
       DT_INT32, regions[1], task->regions[1], FID_DATA, ctx, runtime);
-  Domain input_domain = runtime->get_index_space_domain(
+  Domain input_domain = runtime->get_index_space_domain( // domains are structrues that allow to tell the dimensions of the tensors
       ctx, task->regions[0].region.get_index_space());
   Domain assign_domain = runtime->get_index_space_domain(
       ctx, task->regions[1].region.get_index_space());
 
+  // coord_t are just int. We grad the size of dim[1] and dim[0]
   coord_t input_rows = input_domain.hi()[1] - input_domain.lo()[1] + 1;
   coord_t input_cols = input_domain.hi()[0] - input_domain.lo()[0] + 1;
   assert(input_rows == assign_domain.hi()[1] - assign_domain.lo()[1] + 1);
