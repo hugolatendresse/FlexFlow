@@ -158,18 +158,18 @@ Group_by::Group_by(FFModel &model,
   numWeights = 0;
 }
 
-// Group_by::Group_by(FFModel &model,
-//                    Group_by const &other,
-//                    const ParallelTensor input,
-//                    const ParallelTensor assign)
-//     : Group_by(model, other.layer_guid, assign, other.n, other.alpha, other.name) {}
+Group_by::Group_by(FFModel &model,
+                   Group_by const &other,
+                   const ParallelTensor input,
+                   const ParallelTensor assign)
+    : Group_by(model, other.layer_guid, assign, other.n, other.alpha, other.name) {}
 
 Group_by::Group_by(FFModel &model,
                    Group_byParams const &params,
                    std::pair<ParallelTensor, ParallelTensor> const &inputs,
                    char const *name)
     : Group_by(model,
-               params.layer_guid
+               params.layer_guid,
                inputs.first,
                inputs.second,
                params.n,
