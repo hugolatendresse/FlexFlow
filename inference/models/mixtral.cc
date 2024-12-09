@@ -224,13 +224,13 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         nullptr,
         REG_MODE_NONE,
         0.0f,
-        std::string("layers." + std::to_string(i) + "_block_sparse_moe_gate")
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_gate")
             .c_str());
     gate = ff.softmax(
         gate,
         0,
         DT_NONE,
-        std::string("layers." + std::to_string(i) + "_block_sparse_moe_softmax")
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_softmax")
             .c_str());
 
     Tensor topk_out[2] = {nullptr, nullptr};
@@ -239,7 +239,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         topk_out,
         mixtral_config.num_experts_per_tok,
         false,
-        std::string("layers." + std::to_string(i) + "_block_sparse_moe_topk")
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_topk")
             .c_str());
     Tensor topk_values = topk_out[0];
     Tensor topk_indices = topk_out[1];
@@ -251,7 +251,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         grouped_tokens,
         mixtral_config.num_local_experts,
         0.0f,
-        std::string("layers." + std::to_string(i) + "_block_sparse_moe_groupby")
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
             .c_str());
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
@@ -268,7 +268,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                            REG_MODE_NONE,
                            0.0f,
                            std::string("layers." + std::to_string(i) +
-                                       "_block_sparse_moe_experts_" +
+                                       ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w1")
                                .c_str());
 
@@ -283,7 +283,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                            REG_MODE_NONE,
                            0.0f,
                            std::string("layers." + std::to_string(i) +
-                                       "_block_sparse_moe_experts_" +
+                                       ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w3")
                                .c_str());
 
@@ -291,8 +291,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
           ff.sigmoid_silu_multi(w1,
                                 w3,
                                 DT_NONE,
-                                std::string("layers_" + std::to_string(i) +
-                                            "_block_sparse_moe_experts_" +
+                                std::string("layers." + std::to_string(i) +
+                                            ".block_sparse_moe_experts_" +
                                             std::to_string(expert_idx) + "ssm")
                                     .c_str());
 
@@ -306,8 +306,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                            nullptr,
                            REG_MODE_NONE,
                            0.0f,
-                           std::string("layers_" + std::to_string(i) +
-                                       "_block_sparse_moe_experts_" +
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w2")
                                .c_str());
       aggregate_inputs[4 + expert_idx] = w2;
@@ -322,8 +322,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     mlp_out = ff.aggregate(aggregate_inputs,
                            mixtral_config.num_local_experts,
                            0.0f,
-                           std::string("layers_" + std::to_string(i) +
-                                       "_block_sparse_moe_experts_aggregate")
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_aggregate")
                                .c_str());
   }
   // final normalization and linear
