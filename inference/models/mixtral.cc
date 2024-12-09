@@ -221,7 +221,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
             .c_str());
 
-    printf("Grouped tokens DIM %d", grouped_tokens->num_dims);
+    printf("TOPK VALUES DIM %d", grouped_tokens->num_dims);
 
     // grouped_tokens[0] has dims (1024, 1, 0)
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
