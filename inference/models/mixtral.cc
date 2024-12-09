@@ -175,8 +175,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     token = token_ff_norm[0];
     Tensor ff_norm = token_ff_norm[1];
 
-    mixtral_config.num_local_experts = 1;
-
     // MoE
     Tensor gate = ff.dense(
         ff_norm, // (hidden_size, 1, 128)
