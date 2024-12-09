@@ -208,7 +208,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor topk_values = topk_out[0]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
     Tensor topk_indices = topk_out[1]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
 
-    printf("TOPK VALUES DIM %d", topk_values[0]->num_dims);
+    printf("TOPK VALUES DIM %d", topk_values->num_dims);
 
     Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
     ff.group_by(
