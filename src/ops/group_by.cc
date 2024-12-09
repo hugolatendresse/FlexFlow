@@ -47,9 +47,12 @@ void FFModel::group_by(const Tensor input,
                        int n,
                        float alpha,
                        char const *name) {
+
+  DataType data_type = input->data_type;
+
   Layer *li = new Layer(this,
                         OP_GROUP_BY,
-                        DT_FLOAT,
+                        data_type,
                         name,
                         2 /*inputs*/,
                         0 /*weights*/,
@@ -149,7 +152,7 @@ Group_by::Group_by(FFModel &model,
 
   for (int i = 0; i < n; i++) {
     outputs[i] = model.create_parallel_tensor_legion_ordering(
-        num_dims, dims, DT_FLOAT, this, i /*owner_idx*/);
+        num_dims, dims, data_type, this, i /*owner_idx*/);
     assert(outputs[i] != nullptr);
   }
 
@@ -335,7 +338,7 @@ void Group_by::forward_task(Task const *task,
   // get input and assign regions. Each tensor has three dimensions:
   // (datapoint_dim, batch_size, replica_dim)
   GenericTensorAccessorR input = helperGetGenericTensorAccessorRO(
-      DT_FLOAT, regions[0], task->regions[0], FID_DATA, ctx, runtime);
+      data_type, regions[0], task->regions[0], FID_DATA, ctx, runtime);
   GenericTensorAccessorR assign = helperGetGenericTensorAccessorRO(
       DT_INT32, regions[1], task->regions[1], FID_DATA, ctx, runtime);
   Domain input_domain = runtime->get_index_space_domain(
