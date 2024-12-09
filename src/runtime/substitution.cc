@@ -3667,11 +3667,11 @@ bool FFModel::convert_graph_to_operators(
             *this, (int)inList.size(), inputs, concat->legion_axis, NULL);
         break;
       }
-      // case OP_AGGREGATE: {
-      //   Aggregate *aggr = (Aggregate *)node.ptr;
-      //   new_op = new Aggregate(*this, inputs, aggr->n, aggr->lambda_bal, NULL);
-      //   break;
-      // }
+      case OP_AGGREGATE: {
+        Aggregate *aggr = (Aggregate *)node.ptr;
+        new_op = new Aggregate(*this, inputs, aggr->n, aggr->lambda_bal, NULL);
+        break;
+      }
       case OP_EXPERTS: {
         Experts *exp = (Experts *)node.ptr;
         ExpertsParams params = exp->get_params();
