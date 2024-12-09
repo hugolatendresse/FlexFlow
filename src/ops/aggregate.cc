@@ -81,6 +81,7 @@ Op *Aggregate::create_operator_from_layer(
   float value2;
   layer->get_float_property("lambda_bal", value2);
   float lambda_bal = value2;
+  printf("aggregate second: [0] %d", inputs[0]->num_dims);
   return new Aggregate(model, inputs.data(), n, lambda_bal, layer->name);
 }
 
