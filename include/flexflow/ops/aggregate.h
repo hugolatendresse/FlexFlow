@@ -31,6 +31,11 @@ public:
             float _lambda_bal,
             char const *name = nullptr);
   Aggregate(FFModel &model,
+            std::vector<ParallelTensor> const &inputs,
+            int _n,
+            float _lambda_bal,
+            char const *name = nullptr);
+  Aggregate(FFModel &model,
             Aggregate const &other,
             std::vector<ParallelTensor> const &inputs);
   Aggregate(FFModel &model,
