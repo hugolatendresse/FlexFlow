@@ -604,6 +604,9 @@ void Group_by::serialize(Legion::Serializer &sez) const {
   sez.serialize(this->alpha);
   sez.serialize(strlen(this->name));
   sez.serialize(this->name, strlen(this->name));
+  sez.serialize(this->layer_guid.id);
+  sez.serialize(this->layer_guid.transformer_layer_id);
+  sez.serialize(this->layer_guid.model_id);
 }
 
 Node Group_by::deserialize(FFModel &ff,
@@ -611,6 +614,11 @@ Node Group_by::deserialize(FFModel &ff,
                            ParallelTensor inputs[],
                            int num_inputs) {
   assert(num_inputs == 2);
+  size_t id, transformer_layer_id, deserialized_model_id;
+  dez.deserialize(id);
+  dez.deserialize(transformer_layer_id);
+  dez.deserialize(deserialized_model_id);
+  LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
   int n;
   float alpha;
   dez.deserialize(n);
@@ -620,6 +628,7 @@ Node Group_by::deserialize(FFModel &ff,
   dez.deserialize(name_len);
   dez.deserialize(name, name_len);
   Group_byParams params;
+  params.layer_guid = layer_guid;
   params.n = n;
   params.alpha = alpha;
   strcpy(params.name, name);
