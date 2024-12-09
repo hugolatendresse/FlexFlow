@@ -901,6 +901,7 @@ bool GraphXfer::create_new_operator(OpX const *opx, Node &op) {
     case OP_EW_ADD:
     case OP_EW_SUB:
     case OP_EW_MUL:
+    case OP_EW_DIV:
     case OP_EW_MAX:
     case OP_EW_MIN: {
       ElementBinaryParams params;
@@ -3695,6 +3696,7 @@ bool FFModel::convert_graph_to_operators(
       case OP_EW_ADD:
       case OP_EW_SUB:
       case OP_EW_MUL:
+      case OP_EW_DIV:
       case OP_EW_MAX:
       case OP_EW_MIN: {
         assert(inList.size() == 2);

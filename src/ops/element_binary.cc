@@ -647,7 +647,7 @@ __host__ void
     // Currently only support broadcast for add and sub
     if (in1_domain != in2_domain) {
       assert(m->op_type == OP_EW_SUB || m->op_type == OP_EW_ADD ||
-             m->op_type == OP_EW_MUL);
+      m->op_type == OP_EW_MUL || m->op_type == OP_EW_DIV);
     }
   }
 
@@ -753,7 +753,7 @@ __host__ void
     // Currently only support broadcast for add and sub
     if (in1_domain != in2_domain) {
       assert(m->op_type == OP_EW_SUB || m->op_type == OP_EW_ADD ||
-             m->op_type == OP_EW_MUL);
+      m->op_type == OP_EW_MUL || m->op_type == OP_EW_DIV);
     }
   }
 
