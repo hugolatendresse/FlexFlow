@@ -104,7 +104,7 @@ bool operator==(AggregateParams const &lhs, AggregateParams const &rhs) {
 
 // This runs after mixtral.cc is ran and the prompt is tokenized
 Aggregate::Aggregate(FFModel &model,
-                     std::vector<ParallelTensor>  const &_inputs,
+                     ParallelTensor const *_inputs,
                      int _n,
                      float _lambda_bal,
                      char const *name)
