@@ -254,7 +254,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         Task (UID 1698) (from file /home/FlexFlow/deps/legion/runtime/legion/runtime.cc:5451)
      */
     Tensor topk_out[2] = {nullptr, nullptr};
-
+    printf("gate data_type %d\n", gate->data_type);
     ff.top_k(
         gate, // (num_experts, 1, 128)
         topk_out,
