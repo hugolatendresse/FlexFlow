@@ -282,7 +282,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
       aggregate_inputs[4 + expert_idx] = w2; // w2 has 3 dimensions
     }
-    printf("aggregate_inputs [0] dims: %d", aggregate_inputs[0]->num_dims);
+    printf("aggregate_inputs [4] dims: %d", aggregate_inputs[4]->num_dims);
 
     // Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
     // topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
@@ -292,6 +292,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
     aggregate_inputs[3] = gate;  // TODO this is a tmp fix
 //    aggregate_inputs[2] = aggregate_inputs[3] = nullptr;
+    printf("aggregate_inputs [0] dims: %d", aggregate_inputs[0]->num_dims);
+
     mlp_out = ff.aggregate(aggregate_inputs,
                            mixtral_config.num_local_experts,
                            0.0f,
