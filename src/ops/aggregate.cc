@@ -53,6 +53,7 @@ Tensor FFModel::aggregate(
                         1 /*outputs*/,
                         inputs);
   {
+    printf("aggregate first: [0] %d", inputs[0]->num_dims);
 
     int num_dim = inputs[4]->num_dims;
     // Set output shape
