@@ -213,7 +213,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor ff_norm = token_ff_norm[1];
 
     // MoE
-    Tensor gate = ff.dense(
+    Tensor gate = ff.dense( // experts x batch x seq_len (always the order, even low-level)
         ff_norm,
         mixtral_config.num_local_experts,
         AC_MODE_NONE,
@@ -226,9 +226,11 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         0.0f,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_gate")
             .c_str());
+
+    printf("gate->dim[0] = %d\n", gate->dim[0]);
     gate = ff.softmax(
         gate,
-        0,
+        0, // use -1 to target experts dimension (dim[0]). gets transformed to a zero. This api uses pytorch api ordering, while ff uses cuda ordering
         DT_NONE,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_softmax")
             .c_str());
@@ -253,6 +255,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         0.0f,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
             .c_str());
+
+grouped_tokens = ff.random_tensor(1024,1,128)
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
@@ -318,8 +322,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     aggregate_inputs[0] = topk_values;
     aggregate_inputs[1] = topk_indices;
-    aggregate_inputs[2] = topk_values;
-    aggregate_inputs[3] = gate;
+    aggregate_inputs[2] = topk_values; // he said it's fine, just pass something here
+    aggregate_inputs[3] = gate; // // he said it's fine, just pass something
     mlp_out = ff.aggregate(aggregate_inputs,
                            mixtral_config.num_local_experts,
                            0.0f,
