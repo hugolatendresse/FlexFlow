@@ -331,7 +331,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
     }
 
-      Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1) //
+      // Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1) //
 //    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128) // TODO causes an error
 //    Tensor dummy_gate = ff.dense( // TODO try uncommenting the whole block
 //        ff_norm,
@@ -352,7 +352,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //        DT_NONE,
 //        std::string("dummy_gate").c_str());
 //
-//        aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
+//    aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
 //    aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
 //    aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
 //    aggregate_inputs[3] = dummy_gate;  // TODO this is a tmp fix
