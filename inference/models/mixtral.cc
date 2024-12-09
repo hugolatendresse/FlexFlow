@@ -313,7 +313,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
   Tensor multi = ff.sigmoid_silu_multi(w1, w3); //DT_NONE,std::string("layers." + std::to_string(i) +".block_sparse_moe_experts." +std::to_string(expert_idx) + "ssm").c_str());
 
-  w2 = ff.dense( // output has dims (1024, 1, 0), 3 dims confirmed
+  Tensor w2 = ff.dense( // output has dims (1024, 1, 0), 3 dims confirmed
       				   multi,
                        mixtral_config.hidden_size,
                        AC_MODE_NONE,
@@ -326,7 +326,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        0.0f,
                        std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w2").c_str());
-    aggregate_inputs[4 + expert_idx] = w2;
+    aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
     }
 
 //       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
