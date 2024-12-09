@@ -32,22 +32,43 @@ public:
         try {
           json model_config;
           config_file >> model_config;
+          num_hidden_layers = model_config["num_hidden_layers"];
+          vocab_size = model_config["vocab_size"];
+          num_attention_heads = model_config["num_attention_heads"];
+          if (model_config.find("num_key_value_heads") != model_config.end()) {
+            num_key_value_heads = model_config["num_key_value_heads"];
+          } else {
+            num_key_value_heads = num_attention_heads;
+          }
           hidden_size = model_config["hidden_size"];
+          rms_norm_eps = model_config["rms_norm_eps"];
           intermediate_size = model_config["intermediate_size"];
-          max_position_embeddings = model_config["max_position_embeddings"];
-          num_attention_heads = model_config["num_attention_heads"];
-          num_attention_heads = model_config["num_attention_heads"];
-          num_key_value_heads = model_config["num_key_value_heads"];
+          rotary_embedding_meta.apply_rotary_embedding = true;
+          if (model_config.find("rope_theta") != model_config.end()) {
+            rotary_embedding_meta.rope_theta = model_config["rope_theta"];
+          } else {
+            rotary_embedding_meta.rope_theta = 10000.0f;
+          }
+          if (model_config.find("scaling_factor") != model_config.end() &&
+              !model_config["scaling_factor"].is_null()) {
+            rotary_embedding_meta.rope_type =
+                model_config["scaling_factor"]["rope_type"];
+            rotary_embedding_meta.factor =
+                model_config["scaling_factor"]["factor"];
+            rotary_embedding_meta.low_freq_factor =
+                model_config["scaling_factor"]["low_freq_factor"];
+            rotary_embedding_meta.high_freq_factor =
+                model_config["scaling_factor"]["high_freq_factor"];
+            rotary_embedding_meta.original_max_position_embeddings =
+                model_config["scaling_factor"]
+                            ["original_max_position_embeddings"];
+                }
           num_experts_per_tok = model_config["num_experts_per_tok"];
           num_local_experts = model_config["num_local_experts"];
-          num_hidden_layers = model_config["num_hidden_layers"];
           output_router_logits = model_config["output_router_logits"];
-          rms_norm_eps = model_config["rms_norm_eps"];
-          rope_theta = model_config["rope_theta"];
           router_aux_loss_coef = model_config["router_aux_loss_coef"];
           sliding_window = model_config["sliding_window"];
           tie_word_embeddings = model_config["tie_word_embeddings"];
-          vocab_size = model_config["vocab_size"];
         } catch (json::exception const &e) {
           std::cerr << "Error parsing JSON file: " << e.what() << std::endl;
           assert(false);
@@ -101,6 +122,7 @@ public:
     bool tie_word_embeddings;
     int vocab_size;
     int max_beam_width, max_beam_depth;
+    RotaryEmbeddingMeta rotary_embedding_meta;
   };
 
   static void create_mixtral_model(FFModel &ff,

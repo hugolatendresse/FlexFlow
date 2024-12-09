@@ -60,6 +60,7 @@ void FALCON::create_falcon_model(FFModel &ff,
                               "word_embeddings");
 
   Tensor mha = nullptr, mlp_output = nullptr;
+  Tensor qkv_proj = nullptr, o_proj = nullptr;
   Tensor res_ln_outputs[2] = {nullptr, nullptr};
 
   for (int i = 0; i < falcon_config.n_layer; i++) {
@@ -76,7 +77,7 @@ void FALCON::create_falcon_model(FFModel &ff,
           falcon_config.layer_norm_epsilon,
           true,
           DT_NONE,
-          std::string("layers_" + std::to_string(i) + "_input_layernorm")
+          std::string("layers." + std::to_string(i) + ".input_layernorm")
               .c_str());
     } else {
       ff.residual_layer_norm(
@@ -89,84 +90,96 @@ void FALCON::create_falcon_model(FFModel &ff,
           true,
           falcon_config.layer_norm_epsilon,
           true,
+          false,
           DT_NONE,
-          std::string("layers_" + std::to_string(i) + "_input_layernorm")
+          std::string("layers." + std::to_string(i) + ".input_layernorm")
               .c_str());
       token = res_ln_outputs[0];
       att_norm = res_ln_outputs[1];
     }
 
+    qkv_proj = ff.dense(
+        att_norm,
+        falcon_config.hidden_size *
+            3, // q, k, v. need to change if want to remove replication.
+               // (q_heads + 2 * kv_heads) * proj_size
+        AC_MODE_NONE,
+        false,         // seems like it does not use bias
+        DT_NONE,       // what is this
+        nullptr,       // ?
+        nullptr,       // ?
+        nullptr,       // ?
+        REG_MODE_NONE, // no regularization
+        0.0f,          // no dropout
+        std::string("layers." + std::to_string(i) + ".self_attention.qkv_proj")
+            .c_str());
+    qkv_proj->print("qkv_proj");
+
     switch (mode) {
       case BEAM_SEARCH_MODE: {
-        mha = ff.spec_inc_multiquery_self_attention(
-            att_norm,
+        o_proj = ff.spec_inc_multiquery_self_attention(
+            qkv_proj,
             falcon_config.hidden_size,
             falcon_config.n_head,
             falcon_config.n_head_kv,
             falcon_config.hidden_size / falcon_config.n_head,
             falcon_config.hidden_size / falcon_config.n_head,
             0.0f,    /*dropout*/
-            false,   /*qkv_bias*/
-            false,   /*final_bias*/
             false,   /*add_zero_attn*/
             DT_NONE, /*data_type*/
             NULL,    /*kernel_initializer*/
-            true,    /*apply_rotary_embedding*/
-            false,   /*scaling query*/
-            1.0f,    /*scaling factor*/
-            true,    /*qk_prod_scaling*/
-            false,   /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_attention")
+            falcon_config.rotary_embedding_meta,
+            false, /*scaling query*/
+            1.0f,  /*scaling factor*/
+            true,  /*qk_prod_scaling*/
+            false, /*position_bias*/
+            std::string("layers." + std::to_string(i) + ".self_attention")
                 .c_str() /*name*/
         );
         break;
       }
 
       case TREE_VERIFY_MODE: {
-        mha = ff.inc_multiquery_self_attention_verify(
-            att_norm,
+        o_proj = ff.inc_multiquery_self_attention_verify(
+            qkv_proj,
             falcon_config.hidden_size,
             falcon_config.n_head,
             falcon_config.n_head_kv,
             falcon_config.hidden_size / falcon_config.n_head,
             falcon_config.hidden_size / falcon_config.n_head,
             0.0f,    /*dropout*/
-            false,   /*qkv_bias*/
-            false,   /*final_bias*/
             false,   /*add_zero_attn*/
             DT_NONE, /*data_type*/
             nullptr, /*kernel_initializer*/
-            true,    /*apply_rotary_embedding*/
-            false,   /*scaling query*/
-            1.0f,    /*scaling factor*/
-            true,    /*qk_prod_scaling*/
-            false,   /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_attention")
+            falcon_config.rotary_embedding_meta,
+            false, /*scaling query*/
+            1.0f,  /*scaling factor*/
+            true,  /*qk_prod_scaling*/
+            false, /*position_bias*/
+            std::string("layers." + std::to_string(i) + ".self_attention")
                 .c_str() /*name*/
         );
         break;
       }
 
       case INC_DECODING_MODE: {
-        mha = ff.inc_multiquery_self_attention(
-            att_norm,
+        o_proj = ff.inc_multiquery_self_attention(
+            qkv_proj,
             falcon_config.hidden_size,
             falcon_config.n_head,
             falcon_config.n_head_kv,
             falcon_config.hidden_size / falcon_config.n_head,
             falcon_config.hidden_size / falcon_config.n_head,
             0.0f,    /*dropout*/
-            false,   /*qkv_bias*/
-            false,   /*final_bias*/
             false,   /*add_zero_attn*/
             DT_NONE, /*data_type*/
             nullptr, /*kernel_initializer*/
-            true,    /*apply_rotary_embedding*/
-            false,   /*scaling query*/
-            1.0f,    /*scaling factor*/
-            true,    /*qk_prod_scaling*/
-            false,   /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_attention")
+            falcon_config.rotary_embedding_meta,
+            false, /*scaling query*/
+            1.0f,  /*scaling factor*/
+            true,  /*qk_prod_scaling*/
+            false, /*position_bias*/
+            std::string("layers." + std::to_string(i) + ".self_attention")
                 .c_str() /*name*/
         );
         break;
@@ -175,6 +188,21 @@ void FALCON::create_falcon_model(FFModel &ff,
         assert(false);
       }
     }
+
+    mha = ff.dense(
+        o_proj,
+        falcon_config.hidden_size,
+        AC_MODE_NONE,
+        false,
+        DT_NONE,
+        nullptr,
+        nullptr,
+        nullptr,
+        REG_MODE_NONE,
+        0.0f,
+        std::string("layers." + std::to_string(i) + ".self_attention.o_proj")
+            .c_str());
+    mha->print("mha");
 
     Tensor dense_h_to_4h = ff.dense(
         att_norm,
@@ -187,7 +215,7 @@ void FALCON::create_falcon_model(FFModel &ff,
         nullptr,
         REG_MODE_NONE,
         0.0f,
-        std::string("layers_" + std::to_string(i) + "_mlp_dense_h_to_4h")
+        std::string("layers." + std::to_string(i) + ".mlp.dense_h_to_4h")
             .c_str());
 
     dense_h_to_4h = ff.gelu(dense_h_to_4h);
@@ -203,7 +231,7 @@ void FALCON::create_falcon_model(FFModel &ff,
         nullptr,
         REG_MODE_NONE,
         0.0f,
-        std::string("layers_" + std::to_string(i) + "_mlp_dense_4h_to_h")
+        std::string("layers." + std::to_string(i) + ".mlp.dense_4h_to_h")
             .c_str());
   }
   // final normalization and linear
@@ -216,6 +244,7 @@ void FALCON::create_falcon_model(FFModel &ff,
                          true,
                          falcon_config.layer_norm_epsilon,
                          true,
+                         false,
                          DT_NONE,
                          "ln_f");
   Tensor ln_f = res_ln_outputs[1];
@@ -240,6 +269,14 @@ void FALCON::create_falcon_model(FFModel &ff,
     output = ff.argmax(lm_head, /*beam_Search*/ false);
   }
 
+  // If PEFT is enabled, add LoRA layers
+  if (ff.config.enable_peft) {
+    // todo: add attention projections
+    std::vector<std::string> target_modules = {"dense_h_to_4h",
+                                               "dense_4h_to_h"};
+    ff.add_lora_layers(target_modules);
+  }
+
   FileDataLoader *fileloader =
       new FileDataLoader("",
                          weight_file_path,
@@ -252,26 +289,6 @@ void FALCON::create_falcon_model(FFModel &ff,
 
   InferenceManager *im = InferenceManager::get_inference_manager();
   im->register_model_weights_loader(&ff, fileloader);
-
-#ifdef DEADCODE
-  // Compile the model
-  std::cout << "------start compile ----------" << std::endl;
-  InferenceManager *im = InferenceManager::get_inference_manager();
-  im->compile_model_and_allocate_buffer(&ff);
-  FileDataLoader fileloader("",
-                            weight_file_path,
-                            falcon_config.n_head,
-                            falcon_config.n_head_kv,
-                            falcon_config.hidden_size,
-                            falcon_config.hidden_size / falcon_config.n_head,
-                            ff.config.tensor_parallelism_degree);
-  std::cout << "------load weights ----------" << std::endl;
-  fileloader.load_weights(&ff, use_full_precision);
-  std::cout << "------load weight finished----------" << std::endl;
-
-  // init operators
-  im->init_operators_inference(&ff);
-#endif
 }
 
 }; // namespace FlexFlow

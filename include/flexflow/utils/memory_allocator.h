@@ -54,6 +54,11 @@ public:
     return static_cast<DT *>(ptr);
   }
 
+  inline void free_all() {
+    reserved_allocated_size = 0;
+    instance_allocated_size = 0;
+  }
+
 public:
   Legion::Memory memory;
   void *reserved_ptr;
@@ -61,6 +66,8 @@ public:
   size_t reserved_total_size, reserved_allocated_size;
   size_t instance_total_size, instance_allocated_size;
 };
+
+Legion::Memory get_proc_mem(Legion::Machine machine, Legion::Processor proc);
 
 }; // namespace FlexFlow
 

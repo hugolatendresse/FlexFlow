@@ -271,10 +271,7 @@ OpMeta *BeamTopK::init_task(Task const *task,
                             Runtime *runtime) {
   BeamTopK *topk = (BeamTopK *)task->args;
   FFHandler handle = *((FFHandler *)task->local_args);
-  Memory gpu_mem = Machine::MemoryQuery(Machine::get_machine())
-                       .only_kind(Memory::GPU_FB_MEM)
-                       .best_affinity_to(task->target_proc)
-                       .first();
+  Memory gpu_mem = get_proc_mem(Machine::get_machine(), task->target_proc);
   MemoryAllocator gpu_mem_allocator(gpu_mem);
   BeamTopKMeta *m = new BeamTopKMeta(handle, topk, gpu_mem_allocator);
   m->profiling = topk->profiling;
@@ -378,7 +375,7 @@ BeamInferenceResult
   // embedding size: eg. 4096
   int length = input_domain.hi()[0] - input_domain.lo()[0] + 1;
   // total token nums
-  size_t batch_size = bc.num_active_tokens();
+  size_t batch_size = bc.num_active_infr_tokens();
 
   // need meta for: how many sub requests in a main request
   BeamTopK::forward_kernel_wrapper(m,
@@ -393,9 +390,11 @@ BeamInferenceResult
 
   BeamInferenceResult ir;
 
-  download_tensor<int>(index_ptr, ir.token_ids, batch_size * m->max_beam_width);
-  download_tensor<float>(value_ptr, ir.probs, batch_size * m->max_beam_width);
-  download_tensor<int>(
+  copy_tensor_dev_to_host<int>(
+      index_ptr, ir.token_ids, batch_size * m->max_beam_width);
+  copy_tensor_dev_to_host<float>(
+      value_ptr, ir.probs, batch_size * m->max_beam_width);
+  copy_tensor_dev_to_host<int>(
       parent_ptr, ir.parent_id, batch_size * m->max_beam_width);
 
   if (m->inference_debugging) {

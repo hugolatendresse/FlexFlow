@@ -76,7 +76,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
           mixtral_config.rms_norm_eps,
           mixtral_config.hidden_size,
           DT_NONE,
-          std::string("layers_" + std::to_string(i) + "_input_layernorm")
+          std::string("layers." + std::to_string(i) + ".input_layernorm")
               .c_str());
     } else {
       ff.residual_rms_norm(
@@ -85,80 +85,93 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
           token_att_norm,
           mixtral_config.rms_norm_eps,
           mixtral_config.hidden_size,
+          false, // inplace_residual
           DT_NONE,
-          std::string("layers_" + std::to_string(i) + "_input_layernorm")
+          std::string("layers." + std::to_string(i) + ".input_layernorm")
               .c_str());
       token = token_att_norm[0];
       att_norm = token_att_norm[1];
     }
+    Tensor qkv_proj = ff.dense(
+          att_norm,
+          mixtral_config.hidden_size *
+              3, // q, k, v. need to change if want to remove replication.
+                 // (q_heads + 2 * kv_heads) * proj_size
+          AC_MODE_NONE,
+          false,         // seems like llama does not use bias
+          DT_NONE,       // what is this
+          nullptr,       // ?
+          nullptr,       // ?
+          nullptr,       // ?
+          REG_MODE_NONE, // no regularization
+          0.0f,          // no dropout
+          std::string("layers." + std::to_string(i) + ".self_attn.qkv_proj")
+              .c_str());
 
     Tensor mha;
     switch (mode) {
       case BEAM_SEARCH_MODE: {
-        mha = ff.spec_inc_multihead_self_attention(
-            att_norm,
+        mha = ff.spec_inc_multiquery_self_attention(
+            qkv_proj,
             mixtral_config.hidden_size,
             mixtral_config.num_attention_heads,
+            mixtral_config.num_key_value_heads,
             mixtral_config.hidden_size / mixtral_config.num_attention_heads,
             mixtral_config.hidden_size / mixtral_config.num_attention_heads,
             0.0f,    /*dropout*/
-            false,   /*qkv_bias*/
-            false,   /*final_bias*/
             false,   /*add_zero_attn*/
             DT_NONE, /*data_type*/
             NULL,    /*kernel_initializer*/
-            true,    /*apply_rotary_embedding*/
-            false,   /*scaling query*/
-            1.0f,    /*scaling factor*/
-            true,    /*qk_prod_scaling*/
-            false,   /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_self_attn")
+            mixtral_config.rotary_embedding_meta,
+            false, /*scaling query*/
+            1.0f,  /*scaling factor*/
+            true,  /*qk_prod_scaling*/
+            false, /*position_bias*/
+            std::string("layers." + std::to_string(i) + ".self_attn")
                 .c_str() /*name*/
         );
         break;
       }
       case TREE_VERIFY_MODE: {
-        mha = ff.inc_multihead_self_attention_verify(
-            att_norm,
+        mha = ff.inc_multiquery_self_attention_verify(
+            qkv_proj,
             mixtral_config.hidden_size,
             mixtral_config.num_attention_heads,
+            mixtral_config.num_key_value_heads,
             mixtral_config.hidden_size / mixtral_config.num_attention_heads,
             mixtral_config.hidden_size / mixtral_config.num_attention_heads,
             0.0f,    /*dropout*/
-            false,   /*qkv_bias*/
-            false,   /*final_bias*/
             false,   /*add_zero_attn*/
             DT_NONE, /*data_type*/
             nullptr, /*kernel_initializer*/
-            true,    /*apply_rotary_embedding*/
-            false,   /*scaling query*/
-            1.0f,    /*scaling factor*/
-            true,    /*qk_prod_scaling*/
-            false,   /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_self_attn")
+            mixtral_config.rotary_embedding_meta,
+            false, /*scaling query*/
+            1.0f,  /*scaling factor*/
+            true,  /*qk_prod_scaling*/
+            false, /*position_bias*/
+            std::string("layers." + std::to_string(i) + ".self_attn")
                 .c_str() /*name*/
         );
         break;
       }
       case INC_DECODING_MODE: {
-        mha = ff.inc_multihead_self_attention(
-            att_norm,
+        mha = ff.inc_multiquery_self_attention(
+            qkv_proj,
             mixtral_config.hidden_size,
             mixtral_config.num_attention_heads,
+            mixtral_config.num_key_value_heads,
             mixtral_config.hidden_size / mixtral_config.num_attention_heads,
             mixtral_config.hidden_size / mixtral_config.num_attention_heads,
             0.0f,    /*dropout*/
-            false,   /*qkv_bias*/
-            false,   /*final_bias*/
             false,   /*add_zero_attn*/
             DT_NONE, /*data_type*/
             nullptr, /*kernel_initializer*/
-            true,    /*apply_rotary_embedding*/
-            false,   /*scaling query*/
-            1.0f,    /*scaling factor*/
-            true,    /*qk_prod_scaling*/
-            false,   /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_self_attn")
+            mixtral_config.rotary_embedding_meta,
+            false, /*scaling query*/
+            1.0f,  /*scaling factor*/
+            true,  /*qk_prod_scaling*/
+            false, /*position_bias*/
+            std::string("layers." + std::to_string(i) + ".self_attn")
                 .c_str() /*name*/
         );
         break;
@@ -168,6 +181,22 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
       }
     }
 
+    Tensor mha_input = mha;
+    mha = ff.dense(
+        mha_input,
+        mixtral_config.hidden_size,
+        AC_MODE_NONE,
+        false,
+        DT_NONE,
+        nullptr,
+        nullptr,
+        nullptr,
+        REG_MODE_NONE,
+        0.0f,
+        std::string("layers." + std::to_string(i) + ".self_attn.o_proj")
+            .c_str());
+
+
     // step 2: SILU activaion
     Tensor token_ff_norm[2] = {nullptr, nullptr};
     ff.residual_rms_norm(
@@ -176,8 +205,9 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         token_ff_norm,
         mixtral_config.rms_norm_eps,
         mixtral_config.hidden_size,
+        false, // inplace_residual
         DT_NONE,
-        std::string("layers_" + std::to_string(i) + "_post_attention_layernorm")
+        std::string("layers." + std::to_string(i) + ".post_attention_layernorm")
             .c_str());
     token = token_ff_norm[0];
     Tensor ff_norm = token_ff_norm[1];
@@ -194,13 +224,13 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         nullptr,
         REG_MODE_NONE,
         0.0f,
-        std::string("layers_" + std::to_string(i) + "_block_sparse_moe_gate")
+        std::string("layers." + std::to_string(i) + "_block_sparse_moe_gate")
             .c_str());
     gate = ff.softmax(
         gate,
         0,
         DT_NONE,
-        std::string("layers_" + std::to_string(i) + "_block_sparse_moe_softmax")
+        std::string("layers." + std::to_string(i) + "_block_sparse_moe_softmax")
             .c_str());
 
     Tensor topk_out[2] = {nullptr, nullptr};
@@ -209,7 +239,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         topk_out,
         mixtral_config.num_experts_per_tok,
         false,
-        std::string("layers_" + std::to_string(i) + "_block_sparse_moe_topk")
+        std::string("layers." + std::to_string(i) + "_block_sparse_moe_topk")
             .c_str());
     Tensor topk_values = topk_out[0];
     Tensor topk_indices = topk_out[1];
@@ -221,7 +251,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         grouped_tokens,
         mixtral_config.num_local_experts,
         0.0f,
-        std::string("layers_" + std::to_string(i) + "_block_sparse_moe_groupby")
+        std::string("layers." + std::to_string(i) + "_block_sparse_moe_groupby")
             .c_str());
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
@@ -237,7 +267,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                            nullptr,
                            REG_MODE_NONE,
                            0.0f,
-                           std::string("layers_" + std::to_string(i) +
+                           std::string("layers." + std::to_string(i) +
                                        "_block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w1")
                                .c_str());
@@ -252,7 +282,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                            nullptr,
                            REG_MODE_NONE,
                            0.0f,
-                           std::string("layers_" + std::to_string(i) +
+                           std::string("layers." + std::to_string(i) +
                                        "_block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w3")
                                .c_str());
@@ -303,6 +333,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        final_rms_norm_output,
                        mixtral_config.rms_norm_eps,
                        mixtral_config.hidden_size,
+                       false,
                        DT_NONE,
                        "norm");
 

@@ -66,7 +66,7 @@ void STARCODER::create_starcoder_model(
                               use_full_precision ? DT_FLOAT : DT_HALF,
                               NULL,
                               embed_init,
-                              "transformer_wte");
+                              "wte");
 
   Tensor positional_embedding =
       ff.embedding(position_input,
@@ -76,7 +76,7 @@ void STARCODER::create_starcoder_model(
                    use_full_precision ? DT_FLOAT : DT_HALF,
                    NULL,
                    embed_init,
-                   "transformer_wpe");
+                   "wpe");
 
   Tensor residual = nullptr, c_proj = nullptr;
   Tensor res_ln_outputs[2] = {nullptr, nullptr};
@@ -96,16 +96,34 @@ void STARCODER::create_starcoder_model(
         true,
         startcoder_config.layer_norm_epsilon,
         true,
+        false,
         DT_NONE,
-        std::string("layers_" + std::to_string(i) + "_ln_1").c_str());
+        std::string("layers." + std::to_string(i) + ".ln_1").c_str());
     Tensor hidden_states = res_ln_outputs[0];
     Tensor ln_1 = res_ln_outputs[1];
 
+    Tensor qkv_proj = ff.dense(
+        ln_1,
+        startcoder_config.hidden_size *
+            3, // q, k, v. need to change if want to remove replication.
+               // (q_heads + 2 * kv_heads) * proj_size
+        AC_MODE_NONE,
+        false,         // seems like it does not use bias
+        DT_NONE,       // what is this
+        nullptr,       // ?
+        nullptr,       // ?
+        nullptr,       // ?
+        REG_MODE_NONE, // no regularization
+        0.0f,          // no dropout
+        std::string("layers." + std::to_string(i) + ".self_attention.qkv_proj")
+            .c_str());
+
     Tensor mha;
+    Tensor o_proj;
     switch (mode) {
       case INC_DECODING_MODE: {
-        mha = ff.inc_multiquery_self_attention(
-            ln_1,
+        o_proj = ff.inc_multiquery_self_attention(
+            qkv_proj,
             startcoder_config.hidden_size,
             startcoder_config.num_attention_heads,
             1,
@@ -113,18 +131,16 @@ void STARCODER::create_starcoder_model(
                 startcoder_config.num_attention_heads,
             startcoder_config.hidden_size /
                 startcoder_config.num_attention_heads,
-            startcoder_config.dropout_p, /*dropout*/
-            true,                        /*bias*/
-            false,                       /*add_bias_kv*/
-            false,                       /*add_zero_attn*/
-            DT_NONE,                     /*data_type*/
-            nullptr,                     /*kernel_initializer*/
-            false,                       /*apply_rotary_embedding*/
-            false,                       /*scaling query*/
-            1.0f,                        /*scaling factor*/
-            true,                        /*qk_prod_scaling*/
-            false,                       /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_attention")
+            startcoder_config.dropout_p,             /*dropout*/
+            false,                                   /*add_zero_attn*/
+            DT_NONE,                                 /*data_type*/
+            nullptr,                                 /*kernel_initializer*/
+            startcoder_config.rotary_embedding_meta, /*apply_rotary_embedding*/
+            false,                                   /*scaling query*/
+            1.0f,                                    /*scaling factor*/
+            true,                                    /*qk_prod_scaling*/
+            false,                                   /*position_bias*/
+            std::string("layers." + std::to_string(i) + ".attn.c_attn")
                 .c_str() /*name*/
         );
         break;
@@ -133,6 +149,20 @@ void STARCODER::create_starcoder_model(
         assert(false);
       }
     }
+
+    mha = ff.dense(
+        o_proj,
+        startcoder_config.hidden_size,
+        AC_MODE_NONE,
+        true,
+        DT_NONE,
+        nullptr,
+        nullptr,
+        nullptr,
+        REG_MODE_NONE,
+        0.0f,
+        std::string("layers." + std::to_string(i) + ".self_attn.o_proj")
+            .c_str());
 
     ff.residual_layer_norm(
         hidden_states,
@@ -144,8 +174,9 @@ void STARCODER::create_starcoder_model(
         true,
         startcoder_config.layer_norm_epsilon,
         true,
+        false,
         DT_NONE,
-        std::string("layers_" + std::to_string(i) + "_ln_2").c_str());
+        std::string("layers." + std::to_string(i) + ".ln_2").c_str());
     residual = res_ln_outputs[0];
     Tensor l2_norm = res_ln_outputs[1];
 
@@ -161,7 +192,7 @@ void STARCODER::create_starcoder_model(
         nullptr,
         REG_MODE_NONE,
         0.0f,
-        std::string("layers_" + std::to_string(i) + "_mlp_c_fc").c_str());
+        std::string("layers." + std::to_string(i) + ".mlp.c_fc").c_str());
 
     c_fc = ff.gelu(c_fc);
 
@@ -176,7 +207,7 @@ void STARCODER::create_starcoder_model(
         nullptr,
         REG_MODE_NONE,
         0.0f,
-        std::string("layers_" + std::to_string(i) + "_mlp_c_proj").c_str());
+        std::string("layers." + std::to_string(i) + ".mlp.c_proj").c_str());
   }
   // final normalization and linear
   ff.residual_layer_norm(residual,
@@ -188,8 +219,9 @@ void STARCODER::create_starcoder_model(
                          true,
                          startcoder_config.layer_norm_epsilon,
                          true,
+                         false,
                          DT_NONE,
-                         "transformer_ln_f");
+                         "ln_f");
   Tensor ln_f = res_ln_outputs[1];
 
   Tensor lm_head = ff.dense(ln_f,
@@ -221,6 +253,13 @@ void STARCODER::create_starcoder_model(
     }
   }
 
+  // If PEFT is enabled, add LoRA layers
+  if (ff.config.enable_peft) {
+    // todo: add attention projections
+    std::vector<std::string> target_modules = {"c_fc", "c_proj"};
+    ff.add_lora_layers(target_modules);
+  }
+
   InferenceManager *im = InferenceManager::get_inference_manager();
   FileDataLoader *fileloader = new FileDataLoader(
       "",
@@ -232,16 +271,6 @@ void STARCODER::create_starcoder_model(
       ff.config.tensor_parallelism_degree,
       use_full_precision);
   im->register_model_weights_loader(&ff, fileloader);
-#ifdef DEADCODE
-  // Compile the model
-  std::cout << "------start compile ----------" << std::endl;
-  im->compile_model_and_allocate_buffer(&ff);
-  fileloader.load_weights(&ff, use_full_precision);
-  std::cout << "------load weight finished----------" << std::endl;
-
-  // init operators
-  im->init_operators_inference(&ff);
-#endif
 }
 
 }; // namespace FlexFlow

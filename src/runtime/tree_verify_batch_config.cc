@@ -21,7 +21,7 @@
 
 namespace FlexFlow {
 
-LegionRuntime::Logger::Category log_tree_bc("TreeVerifyBatchConfig");
+Legion::Logger log_tree_bc("TreeVerifyBatchConfig");
 
 TreeVerifyBatchConfig::TreeVerifyBatchConfig() : BatchConfig() {}
 
@@ -54,8 +54,12 @@ std::ostream &operator<<(std::ostream &os, TreeVerifyBatchConfig const &bc) {
       os << "    Number of tokens in batch: "
          << bc.requestsInfo[i].num_tokens_in_batch << std::endl;
       os << "    GUID: " << bc.requestsInfo[i].request_guid << std::endl;
-      os << "    Max sequence length: "
-         << bc.requestsInfo[i].max_sequence_length << std::endl;
+      // PEFT values
+      os << "    PEFT Model ID: " << bc.requestsInfo[i].peft_model_id
+         << std::endl;
+      os << "    PEFT bwd: " << bc.requestsInfo[i].peft_bwd << std::endl;
+      os << "    Max sequence length: " << bc.requestsInfo[i].max_length
+         << std::endl;
       os << "    Request completed: " << bc.request_completed[i] << std::endl;
       os << "    Request running: " << bc.request_running[i] << std::endl;
     }

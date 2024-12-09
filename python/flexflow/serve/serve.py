@@ -29,45 +29,51 @@ from flexflow.serve.models import (
     MixtralConfig,
 )
 from flexflow.core import *
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel, PeftConfig, LoraConfig
 from huggingface_hub import HfApi
-import sys, torch, shutil, hashlib
-from typing import Union, List
+import torch, shutil, hashlib, json, gc
+from typing import Union, List, Tuple
+from safetensors import safe_open
+from huggingface_hub import snapshot_download
+
+from enum import Enum
 
 
-class GenerationConfig:
-    """A class to store the sampling configs."""
+class CachedResourceType(Enum):
+    TOKENIZER = "tokenizer"
+    WEIGHTS = "weights"
 
+
+class _SupportedModels:
     def __init__(
         self,
-        do_sample: bool = False,
-        temperature: float = 0.9,
-        topp: float = 0.8,
-        topk: int = 1,
     ):
-        """Initialize the sampling configs
+        self.supported_models = {
+            "LlamaForCausalLM": (ModelType.LLAMA, FlexFlowLLAMA, LLAMAConfig),
+            "LLaMAForCausalLM": (ModelType.LLAMA, FlexFlowLLAMA, LLAMAConfig),
+            "OPTForCausalLM": (ModelType.OPT, FlexFlowOPT, OPTConfig),
+            "RWForCausalLM": (ModelType.FALCON, FlexFlowFalcon, FalconConfig),
+            "FalconForCausalLM": (ModelType.FALCON, FlexFlowFalcon, FalconConfig),
+            "GPTBigCodeForCausalLM": (
+                ModelType.STARCODER,
+                FlexFlowSTARCODER,
+                STARCODERConfig,
+            ),
+            "MPTForCausalLM": (ModelType.MPT, FlexFlowMPT, MPTConfig),
+            "MixtralForCausalLM": (ModelType.MIXTRAL, FlexFlowMixtral, MixtralConfig),
+        }
 
-        :param do_sample: Whether to perform sampling, or use greedy decoding, defaults to False
-        :type do_sample: bool, optional
-        :param temperature: The temperature setting, defaults to 0.9
-        :type temperature: float, optional
-        :param topp: The top probabilities (top-p) setting, defaults to 0.8
-        :type topp: float, optional
-        :param topk: The top-k setting, defaults to 1
-        :type topk: int, optional
-        """
-        self.do_sample = do_sample
-        self.temperature = temperature
-        self.topp = topp
-        self.topk = topk
-
-
-class GenerationResult:
-    """A class to store the output of a generation request."""
-
-    def __init__(self, text: str = None, tokens: list = None):
-        self.output_text = text
-        self.output_tokens = tokens
+    def get_ff_model_type(self, hf_config):
+        architectures = getattr(hf_config, "architectures", [])
+        ff_arch = None
+        if next(iter(architectures), None) is not None:
+            ff_arch = self.supported_models.get(architectures[0])
+        if ff_arch is None:
+            raise ValueError(
+                f"Huggingface model of type {architectures} is not yet supported by FlexFlow"
+            )
+        return ff_arch
 
 
 class LLM:
@@ -94,71 +100,122 @@ class LLM:
         :param output_file: Path to the output file. If left blank, the output will not be written to file, defaults to ""
         :type output_file: str, optional
         """
-        self.supported_models = {
-            "LlamaForCausalLM": (ModelType.LLAMA, FlexFlowLLAMA, LLAMAConfig),
-            "LLaMAForCausalLM": (ModelType.LLAMA, FlexFlowLLAMA, LLAMAConfig),
-            "OPTForCausalLM": (ModelType.OPT, FlexFlowOPT, OPTConfig),
-            "RWForCausalLM": (ModelType.FALCON, FlexFlowFalcon, FalconConfig),
-            "FalconForCausalLM": (ModelType.FALCON, FlexFlowFalcon, FalconConfig),
-            "GPTBigCodeForCausalLM": (
-                ModelType.STARCODER,
-                FlexFlowSTARCODER,
-                STARCODERConfig,
-            ),
-            "MPTForCausalLM": (ModelType.MPT, FlexFlowMPT, MPTConfig),
-            "MixtralForCausalLM": (ModelType.MIXTRAL, FlexFlowMixtral, MixtralConfig),
-        }
+        self.supported_models = _SupportedModels()
         self.hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
         self.model_name = self.hf_config._name_or_path
         (
             self.model_type,
             self.model_class,
             self.config_class,
-        ) = self.__get_ff_model_type()
+        ) = self.supported_models.get_ff_model_type(self.hf_config)
         self.data_type = data_type
         assert self.data_type == DataType.DT_HALF or self.data_type == DataType.DT_FLOAT
         self.cache_path = cache_path if len(cache_path) > 0 else "~/.cache/flexflow"
         self.refresh_cache = refresh_cache
         self.output_file = output_file
         self.rm = None
+        self.pefts = {}
+        self.tokenizer = None
 
     def __del__(self):
         # Stop the background server before deleting the object
         if type(self) == LLM and self.rm is not None:
             self.rm.stop_server()
 
-    def __get_ff_model_type(self):
-        architectures = getattr(self.hf_config, "architectures", [])
-        ff_arch = None
-        if next(iter(architectures), None) is not None:
-            ff_arch = self.supported_models.get(architectures[0])
-        if ff_arch is None:
-            print(
-                f"Huggingface model of type {architectures} is not yet supported by FlexFlow"
+    def register_peft_adapter(self, lora_config: LoraLinearConfig):
+        """Add a PEFT adapter to the LLM"""
+        if lora_config is None:
+            raise ValueError("lora_config cannot be None")
+        if len(lora_config.peft_model_id or "") == 0:
+            raise ValueError("PEFT model id cannot be empty")
+        # Inference (trainable=False): LoRA model should already exist in huggingface. Any changes of parameters from original model are ignored
+        # Training (trainable=True): Either an existing model (init_lora_weights=False) or a new one (init_lora_weights=True)
+
+        if lora_config.trainable == False or not lora_config.init_lora_weights:
+            peft_config = PeftConfig.from_pretrained(lora_config.peft_model_id)
+        else:
+            peft_config = LoraConfig(
+                peft_type="LORA",
+                base_model_name_or_path=self.model_name,
+                r=lora_config.rank,
+                target_modules=lora_config.target_modules,
+                lora_alpha=lora_config.lora_alpha,
+                lora_dropout=lora_config.lora_dropout,
+                init_lora_weights=lora_config.init_lora_weights,
             )
-            sys.exit(1)
-        return ff_arch
+        if peft_config.peft_type != "LORA":
+            raise RuntimeError(
+                f"PEFT type {peft_config.peft_type} not yet supported in FlexFlow"
+            )
+        if "base_model_name_or_path" not in peft_config.to_dict():
+            raise ValueError(
+                f"PEFT model {lora_config.peft_model_id} does not have an associated base model"
+            )
+        if peft_config.base_model_name_or_path != self.model_name:
+            raise RuntimeError(
+                f"Attempting to add PEFT with base model name {peft_config.base_model_name_or_path} to LLM {self.model_name}"
+            )
+
+        lora_config.ff_compile()
+
+        self.pefts[lora_config] = {
+            "peft_config": peft_config,
+            "peft_type": peft_config.peft_type,
+            "ff_peft_model_id": self.model.ffmodel.register_peft_adapter(lora_config),
+        }
+
+    def get_ff_peft_id(self, lora_config: LoraLinearConfig) -> PEFTModelID:
+        if lora_config is None:
+            raise ValueError("lora_config cannot be None")
+        if len(lora_config.peft_model_id or "") == 0:
+            raise ValueError("PEFT model id cannot be empty")
+        if lora_config not in self.pefts:
+            raise ValueError(
+                f"PEFT {lora_config} not registered with LLM {self.model_name}"
+            )
+        if "ff_peft_model_id" not in self.pefts[lora_config]:
+            raise RuntimeError(
+                f"Attempting to run PEFT {lora_config} before compiling LLM {self.model_name}"
+            )
+
+        return self.pefts[lora_config]["ff_peft_model_id"]
 
     def download_hf_config(self):
         """Save the HuggingFace model configs to a json file. Useful mainly to run the C++ inference code."""
-        self.config_dir = os.path.join(
+        config_dir = os.path.join(
             os.path.expanduser(self.cache_path), "configs", self.model_name.lower()
         )
-        self.config_path = os.path.join(self.config_dir, "config.json")
-        os.makedirs(self.config_dir, exist_ok=True)
-        print(f"Creating directory {self.config_dir} (if it doesn't exist)...")
-        print(f"Saving {self.model_name} configs to file {self.config_path}...")
-        self.hf_config.to_json_file(self.config_path)
-
-    def __get_revision_hashes(self, model_name: str, weights: bool):
-        ff_revision = None
-        ff_revision_file = (
-            os.path.join(self.weights_path, "rev_sha.txt")
-            if weights
-            else os.path.join(self.tokenizer_path, "rev_sha.txt")
+        config_path = os.path.join(config_dir, "config.json")
+        os.makedirs(config_dir, exist_ok=True)
+        print(f"Creating directory {config_dir} (if it doesn't exist)...")
+        print(f"Saving {self.model_name} configs to file {config_path}...")
+        # self.hf_config.to_json_file(config_path)
+        src_folder = snapshot_download(
+            repo_id=self.model_name, allow_patterns="config.json"
         )
-        if os.path.exists(ff_revision_file):
-            ff_revision = "".join(open(ff_revision_file).read().split())
+        src_path = os.path.join(src_folder, "config.json")
+        if os.path.exists(src_path):
+            shutil.copy(src_path, config_path)
+
+    def __get_revision_hashes(
+        self, model_name: str, folder: str
+    ) -> Tuple[Union[str, None], str, str]:
+        """Return the commit hash of the object (weight, tokenizer, etc) cached by FlexFlow and the latest commit hash of the object from HuggingFace (or other source)
+
+        Args:
+            model_name (str): Name of the model cached by FlexFlow
+            folder (str): Folder where the cached object is stored
+
+        Returns:
+            ff_revision: Commit hash of the object cached by FlexFlow
+            ff_revision_filepath: Path to the file containing the commit hash of the object cached by FlexFlow
+            latest_revision: Latest commit hash of the object from HuggingFace (or other source)
+        """
+        ff_revision = None
+        ff_revision_filepath = os.path.join(folder, "rev_sha.txt")
+
+        if os.path.exists(ff_revision_filepath):
+            ff_revision = "".join(open(ff_revision_filepath).read().split())
 
         if os.path.exists(model_name) and os.path.isdir(model_name):
             # Local model
@@ -171,70 +228,102 @@ class LLM:
             # Remote HuggingFace model
             hf_api = HfApi()
             latest_revision = hf_api.model_info(self.model_name).sha
-        return ff_revision, ff_revision_file, latest_revision
+        return ff_revision, latest_revision
 
-    def download_hf_weights_if_needed(self):
-        """Check in the folder specified by the cache_path whether the LLM's model weights are available and up to date.
-        If not, or if the refresh_cache parameter is set to True, download new weights.
+    def __get_resource_path(
+        self, model_name: str, resource_type: CachedResourceType
+    ) -> str:
+        """Returns the path to the folder where the model weights or tokenizer files are stored
+
+        Args:
+            model_name (str): Name of the model
+            resource_type (CachedResourceType): Whether to get the path to the weights or the tokenizer
+
+        Returns:
+            str: Path to the folder where the model weights or tokenizer files are stored
         """
-        if self.data_type == DataType.DT_HALF:
-            torch.set_default_tensor_type(torch.HalfTensor)
-        elif self.data_type == DataType.DT_FLOAT:
-            torch.set_default_tensor_type(torch.FloatTensor)
+        if resource_type == CachedResourceType.WEIGHTS:
+            return os.path.join(
+                os.path.expanduser(self.cache_path),
+                "weights",
+                model_name.lower(),
+                (
+                    "full-precision"
+                    if self.data_type == DataType.DT_FLOAT
+                    else "half-precision"
+                ),
+            )
+        elif resource_type == CachedResourceType.TOKENIZER:
+            return os.path.join(
+                os.path.expanduser(self.cache_path), "tokenizers", model_name.lower()
+            )
         else:
-            assert False, "Data type not yet supported -- cannot download weights!"
+            raise ValueError(f"Invalid resource type {resource_type}")
 
-        # Use local cache, or download new version
-        self.weights_path = os.path.join(
-            os.path.expanduser(self.cache_path),
-            "weights",
-            self.model_name.lower(),
-            (
-                "full-precision"
-                if self.data_type == DataType.DT_FLOAT
-                else "half-precision"
-            ),
-        )
-        if self.refresh_cache:
+    def __need_cache_refresh(
+        self, model_name: str, resource_type: CachedResourceType
+    ) -> bool:
+        """Check whether the model weights or tokenizer files are available and up to date.
+        If they need a refresh, create the folder for the resource, save the new commit hash to the rev_sha.txt file, delete any existing files, and return true.
+
+        Args:
+            model_name (str): Name of the model to check
+            resource_type (CachedResourceType): Whether to check the weights or the tokenizer
+
+        Returns:
+            bool: True if the weights or tokenizer need a refresh, False otherwise
+        """
+        resource_path = self.__get_resource_path(model_name, resource_type)
+        ff_revision, latest_revision = self.__get_revision_hashes(self.model_name, resource_path)
+        if self.refresh_cache or not os.path.exists(resource_path) or ff_revision != latest_revision:
             print(
-                f"Refreshing weights in cache for model {self.model_name} at path {self.weights_path} ..."
+                f"Refreshing {resource_type} in cache for model {model_name} at path {resource_path} ..."
             )
-            if os.path.exists(self.weights_path):
-                shutil.rmtree(self.weights_path)
-        os.makedirs(self.weights_path, exist_ok=True)
-        print(f"Creating directory {self.weights_path} (if it doesn't exist)...")
-
-        ff_revision, ff_revision_file, latest_revision = self.__get_revision_hashes(
-            self.model_name, weights=True
-        )
-
-        # Download if needed
-        if ff_revision != latest_revision:
-            if not os.path.exists(self.model_name) or os.path.isdir(self.model_name):
-                # Local model
-                print(
-                    f"'{self.model_name}' model weights not found in cache or outdated. Downloading from huggingface.co ..."
-                )
-            else:
-                # Remote model
-                print(
-                    f"'{self.model_name}' local model weights were updated! Converting new weights now..."
-                )
-            # Download model from HuggingFace, or load it from the local folder
-            hf_model = AutoModelForCausalLM.from_pretrained(
-                self.model_name, trust_remote_code=True
-            )
-            # Print log message to notify user download of model has finished
-            if not os.path.exists(self.model_name) or os.path.isdir(self.model_name):
-                print("Done downloading HF weights. Converting them now...")
-            # Convert the model to FlexFlow format
-            self.model_class.convert_hf_model(hf_model, self.weights_path)
-            # Save new revision hash to file
+            if os.path.exists(resource_path):
+                shutil.rmtree(resource_path)
+            os.makedirs(resource_path, exist_ok=True)
+            ff_revision_file = os.path.join(resource_path, "rev_sha.txt")
             with open(ff_revision_file, "w+") as f:
                 f.write(latest_revision)
-            print("Done converting the weights...")
-        else:
-            print(f"Loading '{self.model_name}' model weights from the cache...")
+            return True
+        return False
+
+    def download_hf_weights_if_needed(self) -> None:
+        """Check in the folder specified by the cache_path whether the LLM's model weights are available and up to date.
+        If not, or if the refresh_cache parameter is set to True, download new weights and convert them.
+        """
+
+        # TODO: edit this to download the weights using snapshot_download and convert them to FlexFlow format without loading them to GPU
+        def download_and_convert_llm_weights(model_name):
+            hf_model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                trust_remote_code=True,
+                torch_dtype=(
+                    torch.float32
+                    if self.data_type == DataType.DT_FLOAT
+                    else torch.float16
+                ),
+            )
+            # Convert the model to FlexFlow format
+            weights_path = self.__get_resource_path(
+                model_name, CachedResourceType.WEIGHTS
+            )
+            self.model_class.convert_hf_model(hf_model, weights_path)
+            # Save new revision hash to file
+            print(f"Done converting the weights for model {self.model_name}")
+            # Deallocate hf model
+            del hf_model
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        need_refresh = self.__need_cache_refresh(
+            self.model_name, CachedResourceType.WEIGHTS
+        )
+        if need_refresh:
+            print(
+                f"'{self.model_name}' local model weights need updating! Downloading/converting new weights now..."
+            )
+            download_and_convert_llm_weights(self.model_name)
 
     def download_hf_tokenizer_if_needed(self):
         """Check in the folder specified by the cache_path whether the LLM's tokenizer files are available and up to date.
@@ -243,56 +332,97 @@ class LLM:
         print("Loading tokenizer...")
 
         # Use local cache, or download new version
-        self.tokenizer_path = os.path.join(
-            os.path.expanduser(self.cache_path),
-            "tokenizers",
-            self.model_name.lower(),
+        need_refresh = self.__need_cache_refresh(
+            self.model_name, CachedResourceType.TOKENIZER
         )
-        if self.refresh_cache:
+        if need_refresh:
             print(
-                f"Discarding cached tokenizer files (if they exist) for model {self.model_name}..."
+                f"'{self.model_name}' tokenizer needs updating! Downloading tokenizer now..."
             )
-            if os.path.exists(self.tokenizer_path):
-                shutil.rmtree(self.tokenizer_path)
-        if not os.path.exists(self.tokenizer_path):
-            print(f"Creating directory {self.tokenizer_path} (if it doesn't exist)...")
-            os.makedirs(self.tokenizer_path, exist_ok=True)
+            # Load/download the tokenizer files
+            target_tokenizer_files = [
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "special_tokens_map.json",
+                "vocab.json",
+                "merges.txt",
+            ]
+            if os.path.exists(self.model_name):
+                hf_tokenizer_path = self.model_name
+            else:
+                hf_tokenizer_path = snapshot_download(
+                    repo_id=self.model_name, allow_patterns=target_tokenizer_files
+                )
+            tokenizer_path = self.__get_resource_path(
+                self.model_name, CachedResourceType.TOKENIZER
+            )
+            for file in target_tokenizer_files:
+                src_path = os.path.join(hf_tokenizer_path, file)
+                dst_path = os.path.join(tokenizer_path, file)
+                if os.path.exists(src_path):
+                    shutil.copy(src_path, dst_path)
+            print("Done updating HF tokenizer.")
 
-        # Get local revision SHA, check if it matches latest one on huggingface
-        ff_revision, ff_revision_file, latest_revision = self.__get_revision_hashes(
-            self.model_name, weights=False
+    def download_peft_adapter_if_needed(self, hf_peft_model_id: str):
+        """Check in the folder specified by the cache_path whether the PEFT model weights are available and up to date.
+        If not, or if the refresh_cache parameter is set to True, download new weights and convert them.
+        """
+
+        def download_and_convert_peft_model(hf_peft_model_id: str):
+            if (
+                self.data_type != DataType.DT_FLOAT
+                and self.data_type != DataType.DT_HALF
+            ):
+                raise ValueError(
+                    "data_type must be either DataType.DT_FLOAT or DataType.DT_HALF"
+                )
+
+            # Save peft config to file
+            peft_config_dir = os.path.join(
+                os.path.expanduser(self.cache_path), "configs", hf_peft_model_id.lower()
+            )
+            dst_path = os.path.join(peft_config_dir, "config.json")
+            os.makedirs(peft_config_dir, exist_ok=True)
+            print(f"Saving {hf_peft_model_id} configs to file {dst_path}...")
+            config_path = snapshot_download(
+                repo_id=hf_peft_model_id, allow_patterns="adapter_config.json"
+            )
+            src_path = os.path.join(config_path, "adapter_config.json")
+            if os.path.exists(src_path):
+                shutil.copy(src_path, dst_path)
+
+            # Save peft weights to file
+            adapter_path = snapshot_download(
+                repo_id=hf_peft_model_id, allow_patterns="adapter_model.safetensors"
+            )
+            weights_path = self.__get_resource_path(
+                hf_peft_model_id.lower(), CachedResourceType.WEIGHTS
+            )
+            with safe_open(adapter_path, framework="pt", device="cpu") as f:
+                for tensor_name in f.keys():
+                    tensor = f.get_tensor(tensor_name)
+                    if self.data_type == DataType.DT_HALF:
+                        tensor = tensor.half()
+                    else:
+                        tensor = tensor.float()
+                    tensor_name = tensor_name.replace(
+                        "base_model.model.model.", ""
+                    ).replace(".default", "")
+                    print(tensor_name)
+
+                    tensor_name = self.model_class.convert_hf_weight_name(tensor_name)
+                    tensor.detach().cpu().numpy().tofile(
+                        f"{weights_path}/{tensor_name}"
+                    )
+
+        need_refresh = self.__need_cache_refresh(
+            hf_peft_model_id, CachedResourceType.WEIGHTS
         )
-
-        if ff_revision != latest_revision:
-            if not os.path.exists(self.model_name) or os.path.isdir(self.model_name):
-                # Local model
-                print(
-                    f"'{self.model_name}' tokenizer not found in cache or outdated. Downloading from huggingface.co ..."
-                )
-            else:
-                # Remote model
-                print(
-                    f"'{self.model_name}' local tokenizer was updated! Saving new tokenizer now..."
-                )
-            # Download tokenizer from HuggingFace, or load it from the local folder
-            if self.model_type == ModelType.LLAMA:
-                hf_tokenizer = LlamaTokenizer.from_pretrained(
-                    self.model_name, use_fast=True
-                )
-            else:
-                hf_tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            # Print log message to notify user download of tokenizer has finished
-            if not os.path.exists(self.model_name) or os.path.isdir(self.model_name):
-                print("Done downloading tokenizer. Saving it now...")
-            # Save tokenizer
-            hf_tokenizer.save_pretrained(self.tokenizer_path)
-            print("Done saving HF tokenizer.")
-            # Save new revision hash to file
-            with open(ff_revision_file, "w+") as f:
-                f.write(latest_revision)
-
-        else:
-            print(f"Loading '{self.model_name}' tokenizer from the cache...")
+        if need_refresh:
+            print(
+                f"'{hf_peft_model_id}' local model weights need updating! Downloading/converting new weights now..."
+            )
+            download_and_convert_peft_model(hf_peft_model_id)
 
     def compile(
         self,
@@ -300,9 +430,8 @@ class LLM:
         max_requests_per_batch: int = 1,
         max_seq_length: int = 256,
         max_tokens_per_batch: int = 64,
-        model_specific_data_parallelism_degree: int = None,
-        model_specific_tensor_parallelism_degree: int = None,
-        model_specific_pipeline_parallelism_degree: int = None,
+        max_concurrent_adapters: int = 1,
+        enable_peft_finetuning: bool = False,
         ssms: list = [],
     ):
         """Compile the LLM for inference and load the weights into memory
@@ -315,18 +444,13 @@ class LLM:
         :type max_seq_length: int, optional
         :param max_tokens_per_batch: The maximum number of tokens (across requests) to allow per batch, defaults to 64
         :type max_tokens_per_batch: int, optional
-        :param model_specific_data_parallelism_degree: Use this parameter if you want to give the LLM a different data parallelism degree than the one used to initialize the runtime, defaults to None
-        :type model_specific_data_parallelism_degree: int, optional
-        :param model_specific_tensor_parallelism_degree: Use this parameter if you want to give the LLM a different tensor parallelism degree than the one used to initialize the runtime, defaults to None
-        :type model_specific_tensor_parallelism_degree: int, optional
-        :param model_specific_pipeline_parallelism_degree: Use this parameter if you want to give the LLM a different pipeline parallelism degree than the one used to initialize the runtime, defaults to None
-        :type model_specific_pipeline_parallelism_degree: int, optional
+        :param max_concurrent_adapters: The maximum number of concurrent LoRA adapters, defaults to 1
+        :type max_concurrent_adapters: int, optional
+        :param enable_peft_finetuning: Whether to enable support for PEFT fine-tuning, defaults to False
+        :type enable_peft_finetuning: bool, optional
         :param ssms: The SSMs to use when operating in speculative inference mode, defaults to []
         :type ssms: list, optional
         """
-        # self.max_requests_per_batch = max_requests_per_batch
-        # self.max_seq_length = max_seq_length
-        # self.max_tokens_per_batch = max_tokens_per_batch
         self.ssms = ssms
         self.generation_config = GenerationConfig()
         self.ffconfig = FFConfig()
@@ -335,29 +459,22 @@ class LLM:
             mode = InferenceMode.TREE_VERIFY_MODE
         elif type(self) == SSM:
             mode = InferenceMode.BEAM_SEARCH_MODE
+            self.ffconfig.data_parallelism_degree = 1
+            self.ffconfig.tensor_parallelism_degree = 1
+            self.ffconfig.pipeline_parallelism_degree = 1
         else:
             assert type(self) == LLM
             mode = InferenceMode.INC_DECODING_MODE
 
-        # Apply model-specific parallelism degrees, if needed
-        if model_specific_data_parallelism_degree:
-            self.ffconfig.data_parallelism_degree = (
-                model_specific_data_parallelism_degree
-            )
-        if model_specific_tensor_parallelism_degree:
-            self.ffconfig.tensor_parallelism_degree = (
-                model_specific_tensor_parallelism_degree
-            )
-        if model_specific_pipeline_parallelism_degree:
-            self.ffconfig.pipeline_parallelism_degree = (
-                model_specific_pipeline_parallelism_degree
-            )
+        self.max_seq_length = max_seq_length
 
         # Create request manager and set serving configuration
         self.rm = RequestManager()
         self.rm.set_max_requests_per_batch(max_requests_per_batch)
         self.rm.set_max_tokens_per_batch(max_tokens_per_batch)
         self.rm.set_max_sequence_length(max_seq_length)
+        self.rm.set_max_concurrent_adapters(max_concurrent_adapters)
+        self.rm.set_enable_peft_finetuning(enable_peft_finetuning)
 
         # Instantiate the relevant model
         self.model = self.model_class(
@@ -369,6 +486,12 @@ class LLM:
             max_tokens_per_batch,
         )
 
+        # Download the config from huggingface
+        self.download_hf_config()
+
+        # Download the tokenizer from huggingface (if needed) and load them
+        self.download_hf_tokenizer_if_needed()
+
         # Download the weights from huggingface (if needed)
         self.download_hf_weights_if_needed()
 
@@ -376,14 +499,16 @@ class LLM:
         model_configs = self.config_class(self.hf_config)
 
         self.rm.set_max_spec_tree_token_num(
-            self.model_configs.max_spec_tree_token_num
-            if "max_spec_tree_token_num"
-            in self.model_configs.max_spec_tree_token_num.__dict__
+            model_configs.max_spec_tree_token_num
+            if "max_spec_tree_token_num" in model_configs.__dict__
             else 20
         )
 
+        weights_path = self.__get_resource_path(
+            self.model_name, CachedResourceType.WEIGHTS
+        )
         self.fileloader = FileDataLoader(
-            self.weights_path,
+            weights_path,
             model_configs.num_attention_heads,
             model_configs.num_key_value_heads,
             model_configs.hidden_size,
@@ -396,9 +521,6 @@ class LLM:
         self.im = InferenceManager()
         self.im.register_model_weights_loader(self.model.ffmodel, self.fileloader)
 
-        # Download the tokenizer from huggingface (if needed) and load them
-        self.download_hf_tokenizer_if_needed()
-
         # Create tokenizer (this must be done after we have downloaded the tokenizer
         bos_token_id = (
             -1 if self.hf_config.bos_token_id is None else self.hf_config.bos_token_id
@@ -406,8 +528,15 @@ class LLM:
         eos_token_id = (
             -1 if self.hf_config.eos_token_id is None else self.hf_config.eos_token_id
         )
+        if type(eos_token_id) == int:
+            eos_token_id = [eos_token_id]
+        elif type(eos_token_id) != list:
+            raise ValueError("eos_token_id must be an integer or a list of integers")
+        tokenizer_path = self.__get_resource_path(
+            self.model_name, CachedResourceType.TOKENIZER
+        )
         self.rm.register_tokenizer(
-            self.model_type, bos_token_id, eos_token_id, self.tokenizer_path
+            self.model_type, bos_token_id, eos_token_id, tokenizer_path
         )
         self.rm.register_output_filepath(self.output_file)
 
@@ -422,24 +551,152 @@ class LLM:
 
             atexit.register(self.rm.stop_server)
 
-    def generate(self, prompts: Union[str, List[str]], max_length: int = 128):
+    def _generate(self, requests: List[Request]) -> List[GenerationResult]:
+        if len(requests) == 0:
+            return []
+        for req in requests:
+            if req.req_type == RequestType.REQ_INFERENCE:
+                # check max_length and max_new_tokens parameters
+                if req.max_length == -1 and req.max_new_tokens == -1:
+                    req.max_length = self.max_seq_length - 1
+                elif req.max_length != -1 and req.max_new_tokens != -1:
+                    warnings.warn(
+                        f"Both `max_new_tokens` (={req.max_new_tokens}) and `max_length`(={req.max_length}) seem to have been set. `max_new_tokens` will take precedence."
+                    )
+                    req.max_length = -1
+                if (
+                    req.max_length >= self.max_seq_length
+                    or req.max_new_tokens >= self.max_seq_length
+                ):
+                    raise ValueError(
+                        f"max_length ({req.max_length}) or max_new_tokens ({req.max_new_tokens}) exceeds the maximum sequence length ({self.max_seq_length})"
+                    )
+            else:
+                if req.max_new_tokens != -1:
+                    raise ValueError(
+                        f"max_new_tokens ({req.max_new_tokens}) is not allowed for finetuning requests."
+                    )
+                if req.max_length == -1:
+                    req.max_length = self.max_seq_length - 1
+                if req.max_length >= self.max_seq_length:
+                    raise ValueError(
+                        f"max_length ({req.max_length}) exceeds the maximum sequence length ({self.max_seq_length})"
+                    )
+        return self.model.ffmodel.generate(requests)
+
+    def __chat2prompt(self, messages: List[dict]) -> str:
+        """Convert a list of messages to a single prompt string
+
+        :param messages: The list of messages to convert
+        :type messages: List[dict]
+        :return: The prompt string
+        :rtype: str
+        """
+        # ensure that each element is a dictionary, containing the "role" and "content" keys
+        for message in messages:
+            if (
+                type(message) != dict
+                or "role" not in message
+                or "content" not in message
+            ):
+                raise ValueError(
+                    "Each element in the list must be a dictionary with the keys 'role' and 'content'"
+                )
+        if self.tokenizer is None:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        if self.tokenizer.chat_template is None:
+            raise ValueError(
+                f"Model {self.model_name} does not support chat completion"
+            )
+        return self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+    def __output2chat_response(
+        self, requests: List[Request], outputs: List[GenerationResult]
+    ) -> List[GenerationResult]:
+        assert len(requests) == len(outputs)
+        for i in range(len(outputs)):
+            outputs[i].output_text = outputs[i].output_text[len(requests[i].prompt) :]
+        return outputs
+
+    def generate(
+        self,
+        requests_or_prompts: Union[str, List[str], List[dict], Request, List[Request]],
+        max_length: int = -1,
+        max_new_tokens: int = -1,
+    ):
         """Generate tokens based on the input prompt(s)
 
-        :param prompts: The generation prompt(s) in the form of a string, or list of strings
-        :type prompts: Union[str, List[str]]
+        :param requests_or_prompts: The generation prompt(s) in the form of a string, a list of strings, a Request, or list of Requests
+        :type requests_or_prompts: Union[str, List[str], Request, List[Request]]
+        :param max_length: The maximum length in tokens of the prompt + generated sequence, defaults to -1 (no maximum length)
+        :type max_length: int, optional
+        :param max_new_tokens: The maximum number of new tokens (excluding the prompt) to generate, defaults to 128
+        :type max_new_tokens: int, optional
         :return: the generation results
         :rtype: GenerationResult
         """
-        if type(prompts) == str:
-            if len(prompts) == 0:
-                return None
-            return self.model.ffmodel.generate([prompts], max_length)
-        elif type(prompts) == list:
-            if len(prompts) == 0:
+        if type(requests_or_prompts) == str:
+            if len(requests_or_prompts) == 0:
                 return []
-            return self.model.ffmodel.generate(prompts, max_length)
+            request = Request(
+                req_type=RequestType.REQ_INFERENCE,
+                prompt=requests_or_prompts,
+                max_length=max_length,
+                max_new_tokens=max_new_tokens,
+            )
+            return self._generate([request])
+        elif type(requests_or_prompts) == Request:
+            return self._generate([requests_or_prompts])
+        elif type(requests_or_prompts) == list:
+            if len(requests_or_prompts) == 0:
+                return []
+            if type(requests_or_prompts[0]) == str:
+                requests = [
+                    Request(
+                        req_type=RequestType.REQ_INFERENCE,
+                        prompt=req,
+                        max_length=max_length,
+                        max_new_tokens=max_new_tokens,
+                    )
+                    for req in requests_or_prompts
+                ]
+                return self._generate(requests)
+            elif type(requests_or_prompts[0]) == dict:
+                prompt = self.__chat2prompt(requests_or_prompts)
+                request = Request(
+                    req_type=RequestType.REQ_INFERENCE,
+                    prompt=prompt,
+                    max_length=max_length,
+                    max_new_tokens=max_new_tokens,
+                    add_special_tokens=False,
+                )
+                outputs = self._generate([request])
+                return self.__output2chat_response([request], outputs)
+            elif type(requests_or_prompts[0]) == list:
+                prompts = [
+                    self.__chat2prompt(messages) for messages in requests_or_prompts
+                ]
+                requests = [
+                    Request(
+                        req_type=RequestType.REQ_INFERENCE,
+                        prompt=prompt,
+                        max_length=max_length,
+                        max_new_tokens=max_new_tokens,
+                        add_special_tokens=False,
+                    )
+                    for prompt in prompts
+                ]
+                outputs = self._generate(requests)
+                return self.__output2chat_response(requests, outputs)
+            elif type(requests_or_prompts[0]) == Request:
+                print(requests_or_prompts)
+                return self._generate(requests_or_prompts)
         else:
-            assert False, "Please pass a non-empty string or list of strings"
+            assert (
+                False
+            ), "Please pass a string, list of strings, Request, or list of Requests"
 
     def start_server(self):
         self.rm.start_server(self.model.ffmodel)
@@ -448,17 +705,6 @@ class LLM:
     def stop_server(self):
         self.rm.stop_server()
         print("Background server stopped.")
-
-    def __enter__(self):
-        # Start the server when entering the context
-        # self.rm.start_server(self.model.ffmodel)
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        # Stop the server when exiting the context
-        # self.rm.stop_server()
-        if exc_type:
-            print(f"Exception occurred: {exc_value}")
 
 
 class SSM(LLM):
@@ -485,43 +731,31 @@ class SSM(LLM):
         :param output_file: Path to the output file. If left blank, the output will not be written to file, defaults to ""
         :type output_file: str, optional
         """
-        super().__init__(
-            model_name,
-            data_type,
-            cache_path,
-            refresh_cache,
-            output_file,
-        )
+        super().__init__(model_name, data_type, cache_path, refresh_cache, output_file)
 
     def compile(
         self,
         generation_config: GenerationConfig = GenerationConfig(),
         max_requests_per_batch: int = 16,
         max_seq_length: int = 256,
-        max_tokens_per_batch: int = 128,
-        model_specific_data_parallelism_degree: int = 1,
-        model_specific_tensor_parallelism_degree: int = 1,
-        model_specific_pipeline_parallelism_degree: int = 1,
+        max_tokens_per_batch: int = 2048,
+        max_concurrent_adapters: int = 1,
+        enable_peft_finetuning: bool = False,
         ssms: list = [],
     ):
         """Compile the SSM for inference and load the weights into memory
-
-        :param mode: The SSM inference mode (InferenceMode.INC_DECODING_MODE for incremental decoding, InferenceMode.BEAM_SEARCH_MODE for beam search, or InferenceMode.TREE_VERIFY_MODE for token tree verification), defaults to InferenceMode.INC_DECODING_MODE
-        :type mode: InferenceMode, optional
         :param generation_config: The GenerationConfig object with the configurations to use for sampling, defaults to GenerationConfig()
         :type generation_config: GenerationConfig, optional
         :param max_requests_per_batch: The maximum batch size to allow, defaults to 16
         :type max_requests_per_batch: int, optional
         :param max_seq_length: The maximum sequence length to allow per batch, defaults to 256
         :type max_seq_length: int, optional
-        :param max_tokens_per_batch: The maximum number of tokens (across requests) to allow per batch, defaults to 128
+        :param max_tokens_per_batch: The maximum number of tokens (across requests) to allow per batch, defaults to 2048
         :type max_tokens_per_batch: int, optional
-        :param model_specific_data_parallelism_degree: Use this parameter if you want to give the SSM a different data parallelism degree than the default one, defaults to 1
-        :type model_specific_data_parallelism_degree: int, optional
-        :param model_specific_tensor_parallelism_degree: Use this parameter if you want to give the SSM a different tensor parallelism degree than the default one, defaults to 1
-        :type model_specific_tensor_parallelism_degree: int, optional
-        :param model_specific_pipeline_parallelism_degree: Use this parameter if you want to give the SSM a different pipeline parallelism degree than the default one, defaults to 1
-        :type model_specific_pipeline_parallelism_degree: int, optional
+        :param max_concurrent_adapters: The maximum number of concurrent LoRA adapters, defaults to 1
+        :type max_concurrent_adapters: int, optional
+        :param enable_peft_finetuning: Whether to enable support for PEFT fine-tuning, defaults to False
+        :type enable_peft_finetuning: bool, optional
         :param ssms: The SSMs to use when operating in speculative inference mode, defaults to []
         :type ssms: list, optional
         """
@@ -530,8 +764,7 @@ class SSM(LLM):
             max_requests_per_batch,
             max_seq_length,
             max_tokens_per_batch,
-            model_specific_data_parallelism_degree,
-            model_specific_tensor_parallelism_degree,
-            model_specific_pipeline_parallelism_degree,
+            max_concurrent_adapters,
+            enable_peft_finetuning,
             ssms,
         )

@@ -55,6 +55,11 @@ FF_NEW_OPAQUE_TYPE(flexflow_inference_manager_t);
 FF_NEW_OPAQUE_TYPE(flexflow_request_manager_t);
 FF_NEW_OPAQUE_TYPE(flexflow_file_data_loader_t);
 FF_NEW_OPAQUE_TYPE(flexflow_generation_result_t);
+// FF_NEW_OPAQUE_TYPE(flexflow_lora_optimizer_config_t);
+// FF_NEW_OPAQUE_TYPE(flexflow_lora_sgd_optimizer_config_t);
+// FF_NEW_OPAQUE_TYPE(flexflow_lora_adam_optimizer_config_t);
+FF_NEW_OPAQUE_TYPE(flexflow_lora_linear_config_t);
+FF_NEW_OPAQUE_TYPE(flexflow_peft_model_id_t);
 
 // -----------------------------------------------------------------------
 // FFConfig
@@ -85,6 +90,8 @@ int flexflow_config_get_data_parallelism_degree(flexflow_config_t handle_);
 int flexflow_config_get_tensor_parallelism_degree(flexflow_config_t handle_);
 
 int flexflow_config_get_pipeline_parallelism_degree(flexflow_config_t handle_);
+
+bool flexflow_config_get_enable_peft(flexflow_config_t handle_);
 
 void flexflow_config_set_data_parallelism_degree(flexflow_config_t handle_,
                                                  int value);
@@ -270,6 +277,7 @@ flexflow_tensor_t *
                                            bool elementwise_affine,
                                            float eps,
                                            bool use_bias,
+                                           bool inplace_residual,
                                            char const *name);
 
 flexflow_tensor_t *flexflow_model_add_add_bias_residual_layer_norm(
@@ -281,6 +289,7 @@ flexflow_tensor_t *flexflow_model_add_add_bias_residual_layer_norm(
     bool elementwise_affine,
     float eps,
     bool use_bias,
+    bool inplace_residual,
     char const *name);
 
 flexflow_tensor_t
@@ -438,12 +447,16 @@ flexflow_tensor_t flexflow_model_add_inc_multihead_self_attention(
     int kdim,
     int vdim,
     float dropout,
-    bool bias,
-    bool add_bias_kv,
     bool add_zero_attn,
     enum DataType data_type,
     flexflow_initializer_t kernel_initializer_,
     bool apply_rotary_embedding,
+    float rope_theta,
+    char const *rope_type,
+    float rope_factor,
+    float low_freq_factor,
+    float high_freq_factor,
+    int original_max_position_embeddings,
     bool scaling_query,
     float scaling_factor,
     bool qk_prod_scaling,
@@ -458,12 +471,16 @@ flexflow_tensor_t flexflow_model_add_spec_inc_multihead_self_attention(
     int kdim,
     int vdim,
     float dropout,
-    bool bias,
-    bool add_bias_kv,
     bool add_zero_attn,
     enum DataType data_type,
     flexflow_initializer_t kernel_initializer_,
     bool apply_rotary_embedding,
+    float rope_theta,
+    char const *rope_type,
+    float rope_factor,
+    float low_freq_factor,
+    float high_freq_factor,
+    int original_max_position_embeddings,
     bool scaling_query,
     float scaling_factor,
     bool qk_prod_scaling,
@@ -478,12 +495,16 @@ flexflow_tensor_t flexflow_model_add_inc_multihead_self_attention_verify(
     int kdim,
     int vdim,
     float dropout,
-    bool bias,
-    bool add_bias_kv,
     bool add_zero_attn,
     enum DataType data_type,
     flexflow_initializer_t kernel_initializer_,
     bool apply_rotary_embedding,
+    float rope_theta,
+    char const *rope_type,
+    float rope_factor,
+    float low_freq_factor,
+    float high_freq_factor,
+    int original_max_position_embeddings,
     bool scaling_query,
     float scaling_factor,
     bool qk_prod_scaling,
@@ -499,12 +520,16 @@ flexflow_tensor_t flexflow_model_add_inc_multiquery_self_attention(
     int kdim,
     int vdim,
     float dropout,
-    bool bias,
-    bool add_bias_kv,
     bool add_zero_attn,
     enum DataType data_type,
     flexflow_initializer_t kernel_initializer_,
     bool apply_rotary_embedding,
+    float rope_theta,
+    char const *rope_type,
+    float rope_factor,
+    float low_freq_factor,
+    float high_freq_factor,
+    int original_max_position_embeddings,
     bool scaling_query,
     float scaling_factor,
     bool qk_prod_scaling,
@@ -520,12 +545,16 @@ flexflow_tensor_t flexflow_model_add_spec_inc_multiquery_self_attention(
     int kdim,
     int vdim,
     float dropout,
-    bool bias,
-    bool add_bias_kv,
     bool add_zero_attn,
     enum DataType data_type,
     flexflow_initializer_t kernel_initializer_,
     bool apply_rotary_embedding,
+    float rope_theta,
+    char const *rope_type,
+    float rope_factor,
+    float low_freq_factor,
+    float high_freq_factor,
+    int original_max_position_embeddings,
     bool scaling_query,
     float scaling_factor,
     bool qk_prod_scaling,
@@ -541,12 +570,16 @@ flexflow_tensor_t flexflow_model_add_inc_multiquery_self_attention_verify(
     int kdim,
     int vdim,
     float dropout,
-    bool bias,
-    bool add_bias_kv,
     bool add_zero_attn,
     enum DataType data_type,
     flexflow_initializer_t kernel_initializer_,
     bool apply_rotary_embedding,
+    float rope_theta,
+    char const *rope_type,
+    float rope_factor,
+    float low_freq_factor,
+    float high_freq_factor,
+    int original_max_position_embeddings,
     bool scaling_query,
     float scaling_factor,
     bool qk_prod_scaling,
@@ -565,6 +598,7 @@ flexflow_tensor_t *
                                          const flexflow_tensor_t input2_,
                                          float eps,
                                          int dim,
+                                         bool inplace_residual,
                                          char const *name);
 flexflow_tensor_t *
     flexflow_model_add_group_by(flexflow_model_t handle_,
@@ -607,6 +641,13 @@ flexflow_tensor_t flexflow_model_add_argmax(flexflow_model_t handle_,
                                             bool beam_search,
                                             char const *name);
 
+void flexflow_model_add_lora_layers(flexflow_model_t handle_,
+                                    int num_target_modules,
+                                    char const **target_modules_);
+
+flexflow_peft_model_id_t flexflow_model_register_peft_adapter(
+    flexflow_model_t handle_, const flexflow_lora_linear_config_t peft_config_);
+
 void flexflow_model_set_sgd_optimizer(flexflow_model_t handle,
                                       flexflow_sgd_optimizer_t optimizer);
 
@@ -630,11 +671,18 @@ void flexflow_model_set_transformer_layer_id(flexflow_model_t handle, int id);
 
 void flexflow_model_generate(flexflow_model_t handle_,
                              int num_requests,
-                             char const **input_text,
-                             int max_num_chars,
-                             char **output_text,
-                             int max_seq_length,
-                             int **output_length_and_tokens);
+                             enum RequestType *request_types,
+                             char const **input_texts,
+                             char **output_texts,
+                             int *max_lengths,
+                             int *max_new_tokens_,
+                             bool *add_special_tokens_,
+                             flexflow_peft_model_id_t *peft_model_ids,
+                             char const **dataset_filepaths,
+                             int *training_steps,
+                             int **output_length_and_tokens,
+                             int *num_finetuning_losses,
+                             float *finetuning_losses);
 
 void flexflow_model_set_position_offset(flexflow_model_t handle, int offset);
 
@@ -995,11 +1043,21 @@ void flexflow_request_manager_set_max_spec_tree_token_num(
 void flexflow_request_manager_set_max_sequence_length(
     flexflow_request_manager_t handle_, int max_seq_length);
 
+int flexflow_request_manager_get_max_sequence_length(
+    flexflow_request_manager_t handle_);
+
+void flexflow_request_manager_set_max_concurrent_adapters(
+    flexflow_request_manager_t handle_, int max_concurrent_adapters);
+
+void flexflow_request_manager_set_enable_peft_finetuning(
+    flexflow_request_manager_t handle_, bool enable_peft_finetuning_);
+
 void flexflow_request_manager_register_tokenizer(
     flexflow_request_manager_t handle_,
     enum ModelType model_type,
     int bos_token_id,
-    int eos_token_id,
+    int num_eos_token_ids,
+    int *eos_token_ids,
     char const *tokenizer_filepath);
 
 void flexflow_request_manager_register_output_filepath(
@@ -1052,6 +1110,113 @@ void flexflow_file_data_loader_destroy(flexflow_file_data_loader_t handle_);
 
 void flexflow_file_data_loader_load_weights(flexflow_file_data_loader_t handle_,
                                             flexflow_model_t model_handle_);
+
+// // -----------------------------------------------------------------------
+// // LoraSGDOptimizerConfig
+// // -----------------------------------------------------------------------
+
+// flexflow_lora_sgd_optimizer_config_t
+// flexflow_lora_sgd_optimizer_config_create(
+//     double lr, double momentum, bool nesterov, bool weight_decay);
+
+// void flexflow_lora_sgd_optimizer_config_destroy(
+//     flexflow_lora_sgd_optimizer_config_t handle_);
+
+// // -----------------------------------------------------------------------
+// // LoraAdamOptimizerConfig
+// // -----------------------------------------------------------------------
+
+// flexflow_lora_adam_optimizer_config_t
+//     flexflow_lora_adam_optimizer_config_create(double alpha,
+//                                                double beta1,
+//                                                double beta2,
+//                                                double weight_decay,
+//                                                double epsilon);
+
+// void flexflow_lora_adam_optimizer_config_destroy(
+//     flexflow_lora_adam_optimizer_config_t handle_);
+
+// -----------------------------------------------------------------------
+// LoraLinearConfig
+// -----------------------------------------------------------------------
+
+flexflow_lora_linear_config_t
+    flexflow_lora_linear_config_create(char const *cache_folder_,
+                                       char const *peft_model_id_,
+                                       bool trainable,
+                                       bool init_lora_weights,
+                                       char const *base_model_name_or_path,
+                                       char const *precision,
+                                       int rank,
+                                       float lora_alpha,
+                                       float lora_dropout,
+                                       int num_target_modules,
+                                       char const **target_modules_,
+                                       enum OptimizerType optimizer_type,
+                                       float sgd_learning_rate,
+                                       float sgd_momentum,
+                                       bool sgd_nesterov,
+                                       float sgd_weight_decay,
+                                       float adam_alpha,
+                                       float adam_beta1,
+                                       float adam_beta2,
+                                       float adam_weight_decay,
+                                       float adam_epsilon);
+
+void flexflow_lora_linear_config_destroy(flexflow_lora_linear_config_t handle_);
+
+char const *flexflow_lora_linear_config_get_cache_folder(
+    flexflow_lora_linear_config_t handle_);
+
+char const *flexflow_lora_linear_config_get_peft_model_id(
+    flexflow_lora_linear_config_t handle_);
+
+int flexflow_lora_linear_config_get_rank(flexflow_lora_linear_config_t handle_);
+
+float flexflow_lora_linear_config_get_lora_alpha(
+    flexflow_lora_linear_config_t handle_);
+
+float flexflow_lora_linear_config_get_lora_dropout(
+    flexflow_lora_linear_config_t handle_);
+
+bool flexflow_lora_linear_config_get_trainable(
+    flexflow_lora_linear_config_t handle_);
+
+bool flexflow_lora_linear_config_get_init_lora_weights(
+    flexflow_lora_linear_config_t handle_);
+
+char const **flexflow_lora_linear_config_get_target_modules(
+    flexflow_lora_linear_config_t handle_, int *num_target_modules);
+
+char const *flexflow_lora_linear_config_get_base_model_name_or_path(
+    flexflow_lora_linear_config_t handle_);
+
+char const *flexflow_lora_linear_config_get_precision(
+    flexflow_lora_linear_config_t handle_);
+
+void flexflow_lora_linear_config_set_lora_alpha(
+    flexflow_lora_linear_config_t handle_, float value);
+
+void flexflow_lora_linear_config_set_lora_dropout(
+    flexflow_lora_linear_config_t handle_, float value);
+
+void flexflow_lora_linear_config_set_trainable(
+    flexflow_lora_linear_config_t handle_, bool value);
+
+void flexflow_lora_linear_config_set_init_lora_weights(
+    flexflow_lora_linear_config_t handle_, bool value);
+
+// -----------------------------------------------------------------------
+// PEFTModelID
+// -----------------------------------------------------------------------
+
+flexflow_peft_model_id_t flexflow_peft_model_id_create();
+
+flexflow_peft_model_id_t flexflow_peft_model_id_create_id(unsigned long id);
+
+flexflow_peft_model_id_t flexflow_peft_model_id_no_id();
+
+void flexflow_peft_model_id_destroy(flexflow_peft_model_id_t handle_);
 
 #ifdef __cplusplus
 }

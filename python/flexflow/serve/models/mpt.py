@@ -19,8 +19,6 @@ import random, torch, shutil
 
 class MPTConfig:
     def __init__(self, hf_config):
-        # self.max_seq_len = 256
-        # self.max_num_tokens = 64
         self.max_beam_width = 1
         self.max_beam_depth = 8
         self.max_spec_tree_token_num = 20
@@ -28,6 +26,7 @@ class MPTConfig:
         self.n_heads = hf_config.n_heads
         self.n_layers = hf_config.n_layers
         self.vocab_size = hf_config.vocab_size
+        self.rotary_embedding_meta = RotaryEmbeddingMeta(apply_rotary_embedding=False)
         # Standardized FlexFlow num heads fields below
         self.num_attention_heads = hf_config.n_heads
         self.num_key_value_heads = hf_config.n_heads
@@ -50,11 +49,8 @@ class FlexFlowMPT(FlexFlowModel):
         self.mode = mode
         self.generation_config = generation_config
         self.ffconfig = ffconfig
-        # self.max_batch_size = max_batch_size
         self.data_type = data_type
         self.mpt_config = MPTConfig(hf_config)
-        # self.mpt_config.max_seq_length = max_seq_length
-        # self.mpt_config.max_num_tokens = max_tokens_per_batch
         self.weights_filepath = weights_filepath
         self.tokenizer_filepath = tokenizer_filepath
         self.maxint = 2**31 - 1
@@ -97,7 +93,7 @@ class FlexFlowMPT(FlexFlowModel):
             self.data_type,
             None,
             embed_init,
-            name="transformer_wte",
+            name="wte",
         )
 
         axes = [
@@ -114,7 +110,7 @@ class FlexFlowMPT(FlexFlowModel):
                     True,
                     1e-05,
                     False,
-                    name=f"layers_{i}_norm_1",
+                    name=f"layers.{i}.norm_1",
                 )
             else:
                 hidden_states, layernorm_output = ffmodel.residual_layer_norm(
@@ -126,74 +122,84 @@ class FlexFlowMPT(FlexFlowModel):
                     True,
                     1e-05,
                     False,
-                    name=f"layers_{i}_norm_1",
+                    name=f"layers.{i}.norm_1",
                 )
 
+            qkv_proj = ffmodel.dense(
+                layernorm_output,
+                3 * self.mpt_config.hidden_size,
+                ActiMode.AC_MODE_NONE,
+                False,
+                name=f"layers.{i}.attn.qkv_proj",
+            )
+
             if self.mode == InferenceMode.BEAM_SEARCH_MODE:
-                attn_outputs = ffmodel.spec_inc_multihead_self_attention(
-                    layernorm_output,
+                o_proj = ffmodel.spec_inc_multihead_self_attention(
+                    qkv_proj,
                     self.mpt_config.hidden_size,
                     self.mpt_config.n_heads,
                     self.mpt_config.hidden_size // self.mpt_config.n_heads,
                     self.mpt_config.hidden_size // self.mpt_config.n_heads,
                     0.0,  # dropout
-                    False,  # qkv_bias
-                    False,  # final_bias
                     False,  # add_zero_attn
                     DataType.DT_NONE,  # data_type
                     None,  # kernel initializer
-                    False,  # apply_rotary_embedding
+                    self.mpt_config.rotary_embedding_meta,
                     True,  # scaling_query
                     (self.mpt_config.hidden_size / self.mpt_config.n_heads)
                     ** (-0.5),  # scaling_factor
                     False,  # qk_prod_scaling
                     True,  # qk_prod_scaling
-                    name=f"layers_{i}_attention",
+                    name=f"layers.{i}.attn",
                 )
             elif self.mode == InferenceMode.TREE_VERIFY_MODE:
-                attn_outputs = ffmodel.inc_multihead_self_attention_verify(
-                    layernorm_output,
+                o_proj = ffmodel.inc_multihead_self_attention_verify(
+                    qkv_proj,
                     self.mpt_config.hidden_size,
                     self.mpt_config.n_heads,
                     self.mpt_config.hidden_size // self.mpt_config.n_heads,
                     self.mpt_config.hidden_size // self.mpt_config.n_heads,
                     0.0,  # dropout
-                    False,  # qkv_bias
-                    False,  # final_bias
                     False,  # add_zero_attn
                     DataType.DT_NONE,  # data_type
                     None,  # kernel initializer
-                    False,  # apply_rotary_embedding
+                    self.mpt_config.rotary_embedding_meta,
                     True,  # scaling_query
                     (self.mpt_config.hidden_size / self.mpt_config.n_heads)
                     ** (-0.5),  # scaling_factor
                     False,  # qk_prod_scaling
                     True,  # qk_prod_scaling
-                    name=f"layers_{i}_attention",
+                    name=f"layers.{i}.attn",
                 )
             elif self.mode == InferenceMode.INC_DECODING_MODE:
-                attn_outputs = ffmodel.inc_multihead_self_attention(
-                    layernorm_output,
+                o_proj = ffmodel.inc_multihead_self_attention(
+                    qkv_proj,
                     self.mpt_config.hidden_size,
                     self.mpt_config.n_heads,
                     self.mpt_config.hidden_size // self.mpt_config.n_heads,
                     self.mpt_config.hidden_size // self.mpt_config.n_heads,
                     0.0,  # dropout
-                    False,  # qkv_bias
-                    False,  # final_bias
                     False,  # add_zero_attn
                     DataType.DT_NONE,  # data_type
                     None,  # kernel initializer
-                    False,  # apply_rotary_embedding
+                    self.mpt_config.rotary_embedding_meta,
                     True,  # scaling_query
                     (self.mpt_config.hidden_size / self.mpt_config.n_heads)
                     ** (-0.5),  # scaling_factor
                     False,  # qk_prod_scaling
                     True,  # qk_prod_scaling
-                    name=f"layers_{i}_attention",
+                    name=f"layers.{i}.attn",
                 )
             else:
                 assert False
+
+            attn_outputs = ffmodel.dense(
+                o_proj,
+                self.mpt_config.hidden_size,
+                ActiMode.AC_MODE_NONE,
+                False,
+                name=f"layers.{i}.attn.o_proj"
+            )
 
             hidden_states, layernorm_output = ffmodel.residual_layer_norm(
                 attn_outputs,
@@ -204,7 +210,7 @@ class FlexFlowMPT(FlexFlowModel):
                 True,
                 1e-05,
                 False,
-                name=f"layers_{i}_norm_2",
+                name=f"layers.{i}.norm_2",
             )
             # mlp
             layernorm_output = ffmodel.dense(
@@ -212,7 +218,7 @@ class FlexFlowMPT(FlexFlowModel):
                 4 * self.mpt_config.hidden_size,
                 ActiMode.AC_MODE_NONE,
                 False,
-                name=f"layers_{i}_ffn_up_proj",
+                name=f"layers.{i}.ffn.up_proj",
             )
             layernorm_output = ffmodel.gelu(layernorm_output)
             intermediate_output = ffmodel.dense(
@@ -220,7 +226,7 @@ class FlexFlowMPT(FlexFlowModel):
                 self.mpt_config.hidden_size,
                 ActiMode.AC_MODE_NONE,
                 False,
-                name=f"layers_{i}_ffn_down_proj",
+                name=f"layers.{i}.ffn.down_proj",
             )
 
         _, all_final_norm = ffmodel.residual_layer_norm(
@@ -232,7 +238,7 @@ class FlexFlowMPT(FlexFlowModel):
             True,
             1e-05,
             False,
-            name=f"transformer_norm_f",
+            name=f"norm_f",
         )
         lm_head = ffmodel.dense(
             all_final_norm,
@@ -249,18 +255,31 @@ class FlexFlowMPT(FlexFlowModel):
             softmax = ffmodel.softmax(dense, -1)
             output = ffmodel.sampling(softmax, self.generation_config.topp)
         else:
-            output = ffmodel.argmax(lm_head, False)
+            softmax = ffmodel.softmax(lm_head, -1)
+            output = ffmodel.argmax(softmax, False)
 
+        if self.ffconfig.enable_peft:
+            # TODO: add attention projections
+            ffmodel.add_lora_layers(["up_proj", "down_proj"])
+        
         self.ffmodel = ffmodel
+
+    # TODO: finish this
+    def convert_hf_weight_name(name):
+        return (
+            name.replace("transformer.blocks.", "layers.")
+            .replace("transformer.", "")
+            .replace("attn.out_proj", "attn.o_proj")
+        )
 
     def convert_hf_model(model, dst_folder):
         os.makedirs(dst_folder, exist_ok=True)
         for name, params in model.named_parameters():
-            name = name.replace("transformer.blocks.", "layers.").replace(".", "_")
+            name = FlexFlowMPT.convert_hf_weight_name(name)
             if "Wqkv" in name:
-                name_q = name.replace("attn_Wqkv", "attention_wq")
-                name_k = name.replace("attn_Wqkv", "attention_wk")
-                name_v = name.replace("attn_Wqkv", "attention_wv")
+                name_q = name.replace("attn.Wqkv", "attn.q_proj")
+                name_k = name.replace("attn.Wqkv", "attn.k_proj")
+                name_v = name.replace("attn.Wqkv", "attn.v_proj")
                 q, k, v = torch.split(
                     params,
                     [
@@ -273,13 +292,10 @@ class FlexFlowMPT(FlexFlowModel):
                 q.detach().cpu().numpy().tofile(os.path.join(dst_folder, name_q))
                 k.detach().cpu().numpy().tofile(os.path.join(dst_folder, name_k))
                 v.detach().cpu().numpy().tofile(os.path.join(dst_folder, name_v))
-            elif "out_proj" in name:
-                name = name.replace("attn_out_proj", "attention_wo")
-                params.detach().cpu().numpy().tofile(os.path.join(dst_folder, name))
             else:
                 params.detach().cpu().numpy().tofile(os.path.join(dst_folder, name))
 
         shutil.copy(
-            os.path.join(dst_folder, "transformer_wte_weight"),
-            os.path.join(dst_folder, "lm_head_weight"),
+            os.path.join(dst_folder, "wte.weight"),
+            os.path.join(dst_folder, "lm_head.weight"),
         )

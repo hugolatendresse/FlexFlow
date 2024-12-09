@@ -19,8 +19,6 @@ import random, torch
 
 class STARCODERConfig:
     def __init__(self, hf_config):
-        # self.max_seq_len = 256
-        # self.max_num_tokens = 64
         self.max_beam_width = 1
         self.max_beam_depth = 8
         self.max_spec_tree_token_num = 20
@@ -32,6 +30,7 @@ class STARCODERConfig:
         self.vocab_size = hf_config.vocab_size
         self.intermediate_size = hf_config.n_inner
         self.n_head_kv = 1 if hf_config.multi_query else hf_config.n_head
+        self.rotary_embedding_meta = RotaryEmbeddingMeta(apply_rotary_embedding=False)
         # Standardized FlexFlow num heads fields below
         self.num_attention_heads = hf_config.n_head
         self.num_key_value_heads = self.n_head_kv
@@ -45,8 +44,6 @@ class FlexFlowSTARCODER(FlexFlowModel):
         ffconfig,
         hf_config,
         data_type,
-        # max_batch_size=1,
-        # max_seq_length=256,
         max_tokens_per_batch,
         weights_filepath="",
         tokenizer_filepath="",
@@ -54,11 +51,8 @@ class FlexFlowSTARCODER(FlexFlowModel):
         self.mode = mode
         self.generation_config = generation_config
         self.ffconfig = ffconfig
-        # self.max_batch_size = max_batch_size
         self.data_type = data_type
         self.starcoder_config = STARCODERConfig(hf_config)
-        # self.starcoder_config.max_seq_length = max_seq_length
-        # self.starcoder_config.max_num_tokens = max_tokens_per_batch
         self.weights_filepath = weights_filepath
         self.tokenizer_filepath = tokenizer_filepath
         self.maxint = 2**31 - 1
@@ -111,7 +105,7 @@ class FlexFlowSTARCODER(FlexFlowModel):
             self.data_type,
             None,
             embed_init,
-            name="transformer_wte",
+            name="wte",
         )
         positional_embedding = ffmodel.embedding(
             position_tensor,
@@ -121,7 +115,7 @@ class FlexFlowSTARCODER(FlexFlowModel):
             self.data_type,
             None,
             embed_init,
-            name="transformer_wpe",
+            name="wpe",
         )
 
         axes = [
@@ -139,12 +133,20 @@ class FlexFlowSTARCODER(FlexFlowModel):
                 axes,
                 True,
                 self.starcoder_config.layer_norm_epsilon,
-                name=f"layers_{i}_ln_1",
+                name=f"layers.{i}.ln_1",
+            )
+
+            qkv_proj = ffmodel.dense(
+                ln_1,
+                3 * self.starcoder_config.hidden_size,
+                ActiMode.AC_MODE_NONE,
+                True,
+                name=f"layers.{i}.self_attn.qkv_proj",
             )
 
             assert self.mode == InferenceMode.INC_DECODING_MODE
-            mha = ffmodel.inc_multiquery_self_attention(
-                ln_1,
+            o_proj = ffmodel.inc_multiquery_self_attention(
+                qkv_proj,
                 self.starcoder_config.hidden_size,
                 self.starcoder_config.num_attention_heads,
                 self.starcoder_config.n_head_kv,
@@ -153,13 +155,19 @@ class FlexFlowSTARCODER(FlexFlowModel):
                 self.starcoder_config.hidden_size
                 // self.starcoder_config.num_attention_heads,
                 0.0,  # dropout
-                True,  # qkv_bias
-                False,  # final_bias
                 False,  # add_zero_attn
                 DataType.DT_NONE,  # data_type
                 None,  # kernel initializer
-                False,  # apply_rotary_embedding
-                name=f"layers_{i}_attention",
+                self.starcoder_config.rotary_embedding_meta,
+                name=f"layers.{i}.attn.c_attn",
+            )
+
+            mha = ffmodel.dense(
+                o_proj,
+                self.starcoder_config.hidden_size,
+                ActiMode.AC_MODE_NONE,
+                False,
+                name=f"layers.{i}.self_attn.o_proj"
             )
 
             residual, l2_norm = ffmodel.residual_layer_norm(
@@ -171,7 +179,7 @@ class FlexFlowSTARCODER(FlexFlowModel):
                 axes,
                 True,
                 self.starcoder_config.layer_norm_epsilon,
-                name=f"layers_{i}_ln_2",
+                name=f"layers.{i}.ln_2",
             )
 
             # mlp
@@ -181,7 +189,7 @@ class FlexFlowSTARCODER(FlexFlowModel):
                 self.starcoder_config.intermediate_size,
                 ActiMode.AC_MODE_NONE,
                 True,
-                name=f"layers_{i}_mlp_c_fc",
+                name=f"layers.{i}.mlp.c_fc",
             )
             activation = ffmodel.gelu(c_fc, False)
             c_proj = ffmodel.dense(
@@ -189,7 +197,7 @@ class FlexFlowSTARCODER(FlexFlowModel):
                 self.starcoder_config.hidden_size,
                 ActiMode.AC_MODE_NONE,
                 True,
-                name=f"layers_{i}_mlp_c_proj",
+                name=f"layers.{i}.mlp.c_proj",
             )
 
         _, ln_f = ffmodel.residual_layer_norm(
@@ -200,7 +208,7 @@ class FlexFlowSTARCODER(FlexFlowModel):
             axes,
             True,
             self.starcoder_config.layer_norm_epsilon,
-            name=f"transformer_ln_f",
+            name=f"ln_f",
         )
         lm_head = ffmodel.dense(
             ln_f,
@@ -217,18 +225,23 @@ class FlexFlowSTARCODER(FlexFlowModel):
             softmax = ffmodel.softmax(dense, -1)
             output = ffmodel.sampling(softmax, self.generation_config.topp)
         else:
-            output = ffmodel.argmax(lm_head, False)
+            softmax = ffmodel.softmax(lm_head, -1)
+            output = ffmodel.argmax(softmax, False)
 
+        if self.ffconfig.enable_peft:
+            # TODO: add attention projections
+            ffmodel.add_lora_layers(["c_fc", "c_proj"])
+        
         self.ffmodel = ffmodel
 
     def convert_hf_model(model, dst_folder):
         os.makedirs(dst_folder, exist_ok=True)
         for name, params in model.named_parameters():
-            name = name.replace("transformer.h", "layers").replace(".", "_")
-            if "c_attn_weight" in name:
-                name_q = name.replace("attn_c_attn", "attention_wq")
-                name_k = name.replace("attn_c_attn", "attention_wk")
-                name_v = name.replace("attn_c_attn", "attention_wv")
+            name = name.replace("transformer.h", "layers").replace("transformer.", "")
+            if "attn.c_attn.weight" in name:
+                name_q = name.replace("attn.c_attn", "attn.c_attn.q_proj")
+                name_k = name.replace("attn.c_attn", "attn.c_attn.k_proj")
+                name_v = name.replace("attn.c_attn", "attn.c_attn.v_proj")
                 q, k, v = torch.split(
                     params,
                     [
@@ -241,10 +254,10 @@ class FlexFlowSTARCODER(FlexFlowModel):
                 q.detach().cpu().numpy().tofile(os.path.join(dst_folder, name_q))
                 k.detach().cpu().numpy().tofile(os.path.join(dst_folder, name_k))
                 v.detach().cpu().numpy().tofile(os.path.join(dst_folder, name_v))
-            elif "c_attn_bias" in name:
-                name_q = name.replace("attn_c_attn", "attention_wq")
-                name_k = name.replace("attn_c_attn", "attention_wk")
-                name_v = name.replace("attn_c_attn", "attention_wv")
+            elif "attn.c_attn.bias" in name:
+                name_q = name.replace("attn.c_attn", "attn.c_attn.q_proj")
+                name_k = name.replace("attn.c_attn", "attn.c_attn.k_proj")
+                name_v = name.replace("attn.c_attn", "attn.c_attn.v_proj")
                 q, k, v = torch.split(
                     params,
                     [
@@ -257,14 +270,14 @@ class FlexFlowSTARCODER(FlexFlowModel):
                 q.detach().cpu().numpy().tofile(os.path.join(dst_folder, name_q))
                 k.detach().cpu().numpy().tofile(os.path.join(dst_folder, name_k))
                 v.detach().cpu().numpy().tofile(os.path.join(dst_folder, name_v))
-            elif "c_proj_bias" in name:
-                name = name.replace("attn_c_proj", "attention_wo")
+            elif "attn.c_proj.bias" in name:
+                name = name.replace("attn.c_proj", "attn.c_attn.o_proj")
                 params.detach().cpu().numpy().tofile(os.path.join(dst_folder, name))
-            elif "c_proj_weight" in name:
-                name = name.replace("attn_c_proj", "attention_wo")
+            elif "attn.c_proj.weight" in name:
+                name = name.replace("attn.c_proj", "attn.c_attn.o_proj")
                 params.detach().cpu().numpy().tofile(os.path.join(dst_folder, name))
             else:
                 params.detach().cpu().numpy().tofile(os.path.join(dst_folder, name))
         model.lm_head.weight.detach().cpu().numpy().tofile(
-            os.path.join(dst_folder, "lm_head_weight")
+            os.path.join(dst_folder, "lm_head.weight")
         )

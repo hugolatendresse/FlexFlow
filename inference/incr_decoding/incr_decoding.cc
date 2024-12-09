@@ -29,7 +29,7 @@ using namespace FlexFlow;
 using namespace Legion;
 using json = nlohmann::json;
 
-LegionRuntime::Logger::Category log_app("llama");
+Legion::Logger log_app("llama");
 
 struct FilePaths {
   std::string cache_folder_path;
@@ -108,7 +108,9 @@ void parse_input_args(char **argv,
     }
   }
   if (paths.cache_folder_path.empty()) {
-    paths.cache_folder_path = "~/.cache/flexflow";
+    char const *ff_cache_path = std::getenv("FF_CACHE_PATH");
+    paths.cache_folder_path = ff_cache_path ? std::string(ff_cache_path)
+                                            : std::string("~/.cache/flexflow");
   }
   // Expand ~ to the home directory if needed
   wordexp_t p;
@@ -201,9 +203,20 @@ void FlexFlow::top_level_task(Task const *task,
   int bos_token_id = model_config.find("bos_token_id") == model_config.end()
                          ? -1
                          : (int)model_config.at("bos_token_id");
-  int eos_token_id = model_config.find("eos_token_id") == model_config.end()
-                         ? -1
-                         : (int)model_config.at("eos_token_id");
+  // parse eos token id, which can be either a single integer or an array of
+  // integers. Convert to std::vector<int>
+  std::vector<int> eos_token_ids;
+  if (model_config.find("eos_token_id") != model_config.end()) {
+    if (model_config["eos_token_id"].is_array()) {
+      for (auto &eos_token_id : model_config["eos_token_id"]) {
+        eos_token_ids.push_back(eos_token_id);
+      }
+    } else {
+      eos_token_ids.push_back(model_config["eos_token_id"]);
+    }
+  } else {
+    eos_token_ids.push_back(-1);
+  }
 
   assert(model_type != ModelType::UNKNOWN &&
          "Invalid LLM model type passed (or no type was passed).");
@@ -214,7 +227,7 @@ void FlexFlow::top_level_task(Task const *task,
   rm->set_max_tokens_per_batch(max_tokens_per_batch);
   rm->set_max_sequence_length(max_sequence_length);
   rm->register_tokenizer(
-      model_type, bos_token_id, eos_token_id, tokenizer_filepath);
+      model_type, bos_token_id, eos_token_ids, tokenizer_filepath);
   rm->register_output_filepath(file_paths.output_file_path);
 
   FFModel model(ffconfig, ffconfig.cpu_offload);
@@ -273,15 +286,18 @@ void FlexFlow::top_level_task(Task const *task,
                                    /*parser_callback_t */ nullptr,
                                    /*allow_exceptions */ true,
                                    /*ignore_comments */ true);
-    std::vector<std::string> prompts;
+
+    std::vector<Request> requests;
     for (auto &prompt : prompt_json) {
       std::string text = prompt.get<std::string>();
       printf("Prompt[%d]: %s\n", total_num_requests, text.c_str());
+      Request inference_req;
+      inference_req.prompt = text;
+      inference_req.max_length = 128;
+      requests.push_back(inference_req);
       total_num_requests++;
-      prompts.push_back(text);
     }
-    std::vector<GenerationResult> result =
-        model.generate(prompts, 128 /*max_sequence_length*/);
+    std::vector<GenerationResult> result = model.generate(requests);
   }
 
   // terminate the request manager by stopping the background thread

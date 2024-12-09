@@ -65,6 +65,25 @@ constexpr ParameterSyncType CHOSEN_SYNC_TYPE = ParameterSyncType::PS;
 #endif
 
 class FFConfig;
+class MemoryAllocator;
+class PEFTWeightAllocator;
+
+struct CombinedBatchConfigMetaStruct {
+  BatchConfig::PerTokenInfo tokens_info[BatchConfig::MAX_NUM_TOKENS];
+  BatchConfig::PerRequestInfo requestsInfo[BatchConfig::MAX_NUM_REQUESTS];
+  BatchConfig::BitMask causalMask[BatchConfig::MAX_NUM_REQUESTS];
+  bool request_completed[BatchConfig::MAX_NUM_REQUESTS];
+
+  BeamSearchBatchConfig::BeamSearchPerTokenInfo
+      beamTokenInfo[BeamSearchBatchConfig::MAX_NUM_TOKENS +
+                    BeamSearchBatchConfig::MAX_SPEC_TREE_TOKEN_NUM *
+                        BeamSearchBatchConfig::MAX_NUM_REQUESTS];
+  BeamSearchBatchConfig::BeamSearchPerRequestInfo
+      beamRequestsInfo[BeamSearchBatchConfig::MAX_NUM_REQUESTS];
+
+  TreeVerifyBatchConfig::CommittedTokensInfo
+      committed_tokens[TreeVerifyBatchConfig::MAX_NUM_TOKENS];
+};
 
 struct FFHandler {
 #if defined(FF_USE_CUDA) || defined(FF_USE_HIP_CUDA)
@@ -76,18 +95,16 @@ struct FFHandler {
 #endif
   void *workSpace;
   size_t workSpaceSize;
-  void *batch_config_metadata;
+  CombinedBatchConfigMetaStruct *batch_config_metadata;
 
   // request info + token info + topolopgy mask info
-  size_t batch_config_metadata_size =
-      sizeof(BatchConfig::tokensInfo) + sizeof(BatchConfig::requestsInfo) +
-      sizeof(BeamSearchBatchConfig::beamTokenInfo) +
-      sizeof(BeamSearchBatchConfig::beamRequestsInfo) +
-      sizeof(BatchConfig::causalMask) +
-      sizeof(TreeVerifyBatchConfig::committed_tokens) +
-      sizeof(BatchConfig::request_completed);
+  size_t batch_config_metadata_size = sizeof(CombinedBatchConfigMetaStruct);
   void *offload_reserve_space;
   size_t offload_reserve_space_size;
+  // PEFT related fields
+  MemoryAllocator *peft_activation_allocator;
+  size_t peft_activation_reserve_space_size;
+  // Quantization fields
   DataType quantization_type;
   bool allowTensorOpMathConversion;
 #ifdef FF_USE_NCCL
@@ -98,6 +115,7 @@ struct FFHandler {
 struct FFInitInfo {
   size_t workSpaceSize;
   size_t offload_reserve_space_size;
+  size_t peft_activation_reserve_space_size;
   DataType quantization_type;
   bool allowTensorOpMathConversion;
   // int myRank, allRanks;
@@ -145,7 +163,7 @@ public:
   Legion::Runtime *lg_hlr;
   Legion::IndexSpaceT<1> all_gpu_task_is;
   // Legion::FieldSpace field_space;
-  bool syntheticInput, profiling, perform_fusion;
+  bool benchmarking, profiling, perform_fusion;
   bool inference_debugging;
   size_t simulator_work_space_size;
   size_t search_budget;
@@ -155,6 +173,9 @@ public:
   bool cpu_offload;
   size_t offload_reserve_space_size;
   DataType quantization_type;
+  // PEFT related fields
+  bool enable_peft;
+  size_t peft_activation_reserve_space_size;
   // Control parallelizable dimensions
   bool only_data_parallel;
   bool enable_sample_parallel;

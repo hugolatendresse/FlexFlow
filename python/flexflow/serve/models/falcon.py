@@ -41,6 +41,17 @@ class FalconConfig:
         )
         self.parallel_attn = hf_config.parallel_attn
         self.vocab_size = hf_config.vocab_size
+        self.rotary_embedding_meta = RotaryEmbeddingMeta(
+            apply_rotary_embedding=True,
+            rope_theta=hf_config.rope_theta if "rope_theta" in hf_config.__dict__ else 10000.0,
+        )
+        if "rope_scaling" in hf_config.__dict__:
+            if hf_config.rope_scaling is not None:
+                self.rotary_embedding_meta.rope_type = hf_config.rope_scaling["rope_type"]
+                self.rotary_embedding_meta.factor = hf_config.rope_scaling["factor"]
+                self.rotary_embedding_meta.low_freq_factor = hf_config.rope_scaling["low_freq_factor"]
+                self.rotary_embedding_meta.high_freq_factor = hf_config.rope_scaling["high_freq_factor"]
+                self.rotary_embedding_meta.original_max_position_embeddings = hf_config.rope_scaling["original_max_position_embeddings"]
         # Standardized FlexFlow num heads fields below
         self.num_attention_heads = self.n_head
         self.num_key_value_heads = self.n_head_kv
@@ -54,8 +65,6 @@ class FlexFlowFalcon(FlexFlowModel):
         ffconfig,
         hf_config,
         data_type,
-        # max_batch_size=1,
-        # max_seq_length=256,
         max_tokens_per_batch,
         weights_filepath="",
         tokenizer_filepath="",
@@ -63,11 +72,8 @@ class FlexFlowFalcon(FlexFlowModel):
         self.mode = mode
         self.generation_config = generation_config
         self.ffconfig = ffconfig
-        # self.max_batch_size = max_batch_size
         self.data_type = data_type
         self.falcon_config = FalconConfig(hf_config)
-        # self.falcon_config.max_seq_length = max_seq_length
-        # self.falcon_config.max_num_tokens = max_tokens_per_batch
         self.weights_filepath = weights_filepath
         self.tokenizer_filepath = tokenizer_filepath
         self.maxint = 2**31 - 1
@@ -124,7 +130,7 @@ class FlexFlowFalcon(FlexFlowModel):
                     axes,
                     True,
                     self.falcon_config.layer_norm_epsilon,
-                    name=f"layers_{i}_input_layernorm",
+                    name=f"layers.{i}.input_layernorm",
                 )
             else:
                 token, att_norm = ffmodel.residual_layer_norm(
@@ -135,69 +141,79 @@ class FlexFlowFalcon(FlexFlowModel):
                     axes,
                     True,
                     self.falcon_config.layer_norm_epsilon,
-                    name=f"layers_{i}_input_layernorm",
+                    name=f"layers.{i}.input_layernorm",
                 )
 
+            qkv_proj = ffmodel.dense(
+                att_norm,
+                3 * self.falcon_config.hidden_size,
+                ActiMode.AC_MODE_NONE,
+                False,
+                name=f"layers.{i}.self_attention.qkv_proj",
+            )
+
             if self.mode == InferenceMode.BEAM_SEARCH_MODE:
-                mha = ffmodel.spec_inc_multiquery_self_attention(
-                    att_norm,
+                o_proj = ffmodel.spec_inc_multiquery_self_attention(
+                    qkv_proj,
                     self.falcon_config.hidden_size,
                     self.falcon_config.n_head,
                     self.falcon_config.n_head_kv,
                     self.falcon_config.hidden_size // self.falcon_config.n_head,
                     self.falcon_config.hidden_size // self.falcon_config.n_head,
                     0.0,  # dropout
-                    False,  # qkv_bias
-                    False,  # final_bias
                     False,  # add_zero_attn
                     DataType.DT_NONE,  # data_type
                     None,  # kernel initializer
-                    True,  # apply_rotary_embedding
-                    name=f"layers_{i}_attention",
+                    self.falcon_config.rotary_embedding_meta,
+                    name=f"layers.{i}.self_attention",
                 )
             elif self.mode == InferenceMode.TREE_VERIFY_MODE:
-                mha = ffmodel.inc_multiquery_self_attention_verify(
-                    att_norm,
+                o_proj = ffmodel.inc_multiquery_self_attention_verify(
+                    qkv_proj,
                     self.falcon_config.hidden_size,
                     self.falcon_config.n_head,
                     self.falcon_config.n_head_kv,
                     self.falcon_config.hidden_size // self.falcon_config.n_head,
                     self.falcon_config.hidden_size // self.falcon_config.n_head,
                     0.0,  # dropout
-                    False,  # qkv_bias
-                    False,  # final_bias
                     False,  # add_zero_attn
                     DataType.DT_NONE,  # data_type
                     None,  # kernel initializer
-                    True,  # apply_rotary_embedding
-                    name=f"layers_{i}_attention",
+                    self.falcon_config.rotary_embedding_meta,
+                    name=f"layers.{i}.self_attention",
                 )
             elif self.mode == InferenceMode.INC_DECODING_MODE:
-                mha = ffmodel.inc_multiquery_self_attention(
-                    att_norm,
+                o_proj = ffmodel.inc_multiquery_self_attention(
+                    qkv_proj,
                     self.falcon_config.hidden_size,
                     self.falcon_config.n_head,
                     self.falcon_config.n_head_kv,
                     self.falcon_config.hidden_size // self.falcon_config.n_head,
                     self.falcon_config.hidden_size // self.falcon_config.n_head,
                     0.0,  # dropout
-                    False,  # qkv_bias
-                    False,  # final_bias
                     False,  # add_zero_attn
                     DataType.DT_NONE,  # data_type
                     None,  # kernel initializer
-                    True,  # apply_rotary_embedding
-                    name=f"layers_{i}_attention",
+                    self.falcon_config.rotary_embedding_meta,
+                    name=f"layers.{i}.self_attention",
                 )
             else:
                 assert False
+
+            mha = ffmodel.dense(
+                o_proj,
+                self.falcon_config.hidden_size,
+                ActiMode.AC_MODE_NONE,
+                False,
+                name=f"layers.{i}.self_attention.o_proj"
+            )
 
             dense_h_to_4h = ffmodel.dense(
                 att_norm,
                 self.falcon_config.hidden_size * 4,
                 ActiMode.AC_MODE_NONE,
                 False,
-                name=f"layers_{i}_mlp_dense_h_to_4h",
+                name=f"layers.{i}.mlp.dense_h_to_4h",
             )
             dense_h_to_4h = ffmodel.gelu(dense_h_to_4h)
             mlp_output = ffmodel.dense(
@@ -205,7 +221,7 @@ class FlexFlowFalcon(FlexFlowModel):
                 self.falcon_config.hidden_size,
                 ActiMode.AC_MODE_NONE,
                 False,
-                name=f"layers_{i}_mlp_dense_4h_to_h",
+                name=f"layers.{i}.mlp.dense_4h_to_h",
             )
 
         _, ln_f = ffmodel.residual_layer_norm(
@@ -239,9 +255,21 @@ class FlexFlowFalcon(FlexFlowModel):
                 output = ffmodel.sampling(softmax, self.generation_config.topp)
             else:
                 # output = ffmodel.arg_top_k(lm_head, 1, False)
-                output = ffmodel.argmax(lm_head, False)
+                softmax = ffmodel.softmax(lm_head, -1)
+                output = ffmodel.argmax(softmax, False)
+        
+        if self.ffconfig.enable_peft:
+            # TODO: add attention projections
+            ffmodel.add_lora_layers(["dense_h_to_4h", "dense_4h_to_h"])
 
         self.ffmodel = ffmodel
+
+    # TODO: finish this
+    def convert_hf_weight_name(name):
+        return (name.replace("transformer.h.", "layers.")
+            .replace("transformer.", "")
+            .replace("self_attention.dense", "self_attention.o_proj")
+        )
 
     def convert_hf_model(model, dst_folder):
         os.makedirs(dst_folder, exist_ok=True)
@@ -251,17 +279,12 @@ class FlexFlowFalcon(FlexFlowModel):
             else model.config.num_attention_heads
         )
         for name, params in model.named_parameters():
-            name = (
-                name.replace(".", "_")
-                .replace("transformer_h_", "layers_")
-                .replace("transformer_", "")
-                .replace("self_attention_dense", "attention_wo")
-            )
+            name = FlexFlowFalcon.convert_hf_weight_name(name)
             # Split Q,K,V attention weights
-            if "self_attention_query_key_value" in name:
-                name_q = name.replace("self_attention_query_key_value", "attention_wq")
-                name_k = name.replace("self_attention_query_key_value", "attention_wk")
-                name_v = name.replace("self_attention_query_key_value", "attention_wv")
+            if "self_attention.query_key_value" in name:
+                name_q = name.replace("self_attention.query_key_value", "self_attention.q_proj")
+                name_k = name.replace("self_attention.query_key_value", "self_attention.k_proj")
+                name_v = name.replace("self_attention.query_key_value", "self_attention.v_proj")
                 q, k, v = torch.split(
                     params,
                     [
@@ -278,5 +301,5 @@ class FlexFlowFalcon(FlexFlowModel):
                 params.detach().cpu().numpy().tofile(os.path.join(dst_folder, name))
         # LM head weight
         model.lm_head.weight.detach().cpu().numpy().tofile(
-            os.path.join(dst_folder, "lm_head_weight")
+            os.path.join(dst_folder, "lm_head.weight")
         )

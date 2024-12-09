@@ -16,6 +16,7 @@
 #include "flexflow/utils/file_loader.h"
 #include "flexflow/ffconst_utils.h"
 #include "flexflow/inference.h"
+#include "flexflow/model.h"
 
 #include <vector>
 using namespace std;
@@ -80,51 +81,56 @@ std::string removeGuidOperatorName(std::string const &input) {
 }
 
 template <typename DT>
-void load_attention_weights_multi_query(DT *ptr,
-                                        std::string layer_name,
-                                        std::string weights_folder,
-                                        size_t hidden_dim,
-                                        int num_heads) {
+void load_attention_o_proj_bias_to_dense_v2(DT *ptr,
+                                            int num_heads,
+                                            int num_kv_heads,
+                                            size_t hidden_dim,
+                                            size_t qkv_inner_dim,
+                                            std::string layer_name,
+                                            std::string weights_folder) {
+  std::string filename = layer_name + ".o_proj.bias";
 
-  std::string qkv_file = layer_name.substr(0, layer_name.find("attention")) +
-                         "attention_query_key_value_weight";
-  std::string o_file = layer_name.substr(0, layer_name.find("attention")) +
-                       "attention_dense_weight";
-
-  // q has n_heads heads, k and v only have one head, o have n_head heads
-  std::vector<std::string> weight_filenames = {qkv_file, o_file};
   int file_index = 0;
-  int data_index = 0;
-  for (auto filename : weight_filenames) {
-    std::cout << "Loading weight file " << filename << std::endl;
-    std::string weight_filepath = join_path({weights_folder, filename});
-    size_t partial_size =
-        file_index == 0 ? (hidden_dim + 2 * hidden_dim / num_heads) * hidden_dim
-                        : hidden_dim * hidden_dim;
 
-    std::ifstream in(weight_filepath, std::ios::in | std::ios::binary);
-    // std::cout << "Loading filename: " << weight_filepath << std::endl;
-    if (!in.good()) {
-      std::cout << "Could not open file: " << weight_filepath << std::endl;
-    }
-    assert(in.good() && "incorrect weight file path");
-    std::vector<DT> host_array(partial_size);
-    size_t loaded_data_size = sizeof(DT) * partial_size;
-    in.seekg(0, in.end);
-    in.seekg(0, in.beg);
-    in.read((char *)host_array.data(), loaded_data_size);
-    size_t in_get_size = in.gcount();
+  // now only opt use this.
+  // assert(num_heads == num_kv_heads);
+  int idx = 0;
 
-    if (in_get_size != loaded_data_size) {
-      std::cout << "load data error " << in_get_size << ", "
-                << loaded_data_size;
-      assert(false && "data size mismatch");
-    }
-    for (int i = 0; i < partial_size; i++) {
-      ptr[data_index++] = host_array.at(i);
-    }
-    file_index++;
+  std::cout << "Loading weight file " << filename << std::endl;
+  std::string weight_filepath = join_path({weights_folder, filename});
+
+  int n_heads = num_heads;
+
+  int replicate_num = num_heads / num_kv_heads;
+
+  size_t out_partial_size = hidden_dim;
+  size_t partial_size = out_partial_size;
+  std::ifstream in(weight_filepath, std::ios::in | std::ios::binary);
+  assert(in.good() && "incorrect bias file path");
+  std::vector<DT> host_array(partial_size);
+  size_t loaded_data_size = sizeof(DT) * partial_size;
+  in.seekg(0, in.end);
+  in.seekg(0, in.beg);
+  in.read((char *)host_array.data(), loaded_data_size);
+  size_t in_get_size = in.gcount();
+
+  if (in_get_size != loaded_data_size) {
+    printf(
+        "load bias data error: in_get_size (%lu) != loaded_data_size (%lu)\n",
+        in_get_size,
+        loaded_data_size);
+    assert(false);
   }
+  assert(partial_size == host_array.size());
+
+  size_t data_index = 0;
+
+  for (int i = 0; i < partial_size; i++) {
+    ptr[i] = host_array.at(data_index);
+    data_index++;
+  }
+
+  in.close();
 }
 
 template <typename DT>
@@ -135,44 +141,53 @@ void load_attention_bias_v2(DT *ptr,
                             size_t qkv_inner_dim,
                             bool final_bias,
                             std::string layer_name,
-                            std::string weights_folder) {
-  std::string q_file = layer_name + "_wq_bias";
-  std::string k_file = layer_name + "_wk_bias";
-  std::string v_file = layer_name + "_wv_bias";
+                            std::string weights_folder,
+                            int tp_degree) {
+  std::string q_file = layer_name + ".q_proj.bias";
+  std::string k_file = layer_name + ".k_proj.bias";
+  std::string v_file = layer_name + ".v_proj.bias";
   std::vector<std::string> bias_files = {q_file, k_file, v_file};
-  if (final_bias) {
-    std::string o_file = layer_name + "_wo_bias";
-    bias_files.push_back(o_file);
-  }
+
+  // linear layer weights: [output_size, input_size]
+  // bias layer weights: [output_size]
+  // Q,K,V projection weights: [head_dim*num_heads, hidden_size] = [768, 768]
+  // QKV bias weights: [head_dim*num_heads] = [768], organized as: [head_dim_0,
+  // head_dim_1, ...]
+
+  // need to rearrange: [[q_heads_shard_0], [k_heads_shard_0],
+  // [v_heads_shard_0], ..., [q_heads_shard_n], [k_heads_shard_n],
+  // [v_heads_shard_n]] where n = tp_degree
+  assert(num_heads % tp_degree == 0);
+  assert(num_kv_heads % tp_degree == 0);
+  assert(hidden_dim % num_heads == 0);
+  assert(qkv_inner_dim == hidden_dim / num_heads);
+  size_t q_heads_per_shard = num_heads / tp_degree;
+  size_t kv_heads_per_shard = num_kv_heads / tp_degree;
+  size_t shard_chunk_size =
+      (q_heads_per_shard + 2 * kv_heads_per_shard) * qkv_inner_dim;
 
   int file_index = 0;
-
-  // now only opt use this.
-  // assert(num_heads == num_kv_heads);
-  int idx = 0;
-
   for (auto filename : bias_files) {
     std::cout << "Loading weight file " << filename << std::endl;
     std::string weight_filepath = join_path({weights_folder, filename});
 
     int n_heads = file_index == 0 ? num_heads : num_kv_heads;
+    assert(n_heads % tp_degree == 0);
+    int heads_per_shard = n_heads / tp_degree;
+    int qkv_prev_heads_cur_shard =
+        (file_index == 2) ? num_heads + num_kv_heads : file_index * num_heads;
+    assert(qkv_prev_heads_cur_shard % tp_degree == 0);
+    qkv_prev_heads_cur_shard /= tp_degree;
 
-    int replicate_num = num_heads / num_kv_heads;
-
-    size_t qkv_partial_size = qkv_inner_dim * n_heads;
-    size_t qkv_replicate_size = qkv_inner_dim * num_heads;
-    size_t out_partial_size = hidden_dim;
-    size_t partial_size =
-        (file_index < 3) ? qkv_partial_size : out_partial_size;
+    // load into memory first
+    size_t bias_size = qkv_inner_dim * n_heads;
     std::ifstream in(weight_filepath, std::ios::in | std::ios::binary);
     assert(in.good() && "incorrect bias file path");
-    std::vector<DT> host_array(partial_size);
-    size_t loaded_data_size = sizeof(DT) * partial_size;
-    in.seekg(0, in.end);
+    std::vector<DT> host_array(bias_size);
+    size_t loaded_data_size = sizeof(DT) * bias_size;
     in.seekg(0, in.beg);
     in.read((char *)host_array.data(), loaded_data_size);
     size_t in_get_size = in.gcount();
-
     if (in_get_size != loaded_data_size) {
       printf(
           "load bias data error: in_get_size (%lu) != loaded_data_size (%lu)\n",
@@ -180,49 +195,41 @@ void load_attention_bias_v2(DT *ptr,
           loaded_data_size);
       assert(false);
     }
-    assert(partial_size == host_array.size());
+    assert(bias_size == host_array.size());
 
-    size_t data_index = 0;
-
-    // q, o
-    if (file_index == 0 || file_index == 3) {
-      for (int i = 0; i < partial_size; i++) {
-        ptr[idx + i] = host_array.at(data_index);
-        data_index++;
-      }
-    } else {
-      // k, v
-      for (int i = 0; i < partial_size; i++) {
-        for (int j = 0; j < replicate_num; j++) {
-          ptr[idx + j * partial_size + i] = host_array.at(data_index);
-        }
-        data_index++;
+    // now copy chunks into ptr
+    for (int i = 0; i < n_heads; i++) {
+      int shard_idx = i / heads_per_shard;
+      for (int j = 0; j < qkv_inner_dim; j++) {
+        int src_idx = i * qkv_inner_dim + j;
+        int dst_idx = shard_idx * shard_chunk_size +
+                      qkv_prev_heads_cur_shard * qkv_inner_dim +
+                      (i % heads_per_shard) * qkv_inner_dim + j;
+        ptr[dst_idx] = host_array.at(src_idx);
       }
     }
-
     file_index++;
-    idx += qkv_replicate_size;
-
     in.close();
   }
 }
 
 template <typename DT>
-void load_attention_weights_v2(DT *ptr,
-                               int num_heads,
-                               int num_kv_heads,
-                               size_t hidden_dim,
-                               size_t qkv_inner_dim,
-                               std::string layer_name,
-                               std::string weights_folder,
-                               size_t volume,
-                               int tensor_parallelism_degree) {
+void load_attention_weights_to_dense_v2(DT *ptr,
+                                        int num_heads,
+                                        int num_kv_heads,
+                                        size_t hidden_dim,
+                                        size_t qkv_inner_dim,
+                                        std::string layer_name,
+                                        std::string weights_folder,
+                                        size_t volume,
+                                        int tensor_parallelism_degree,
+                                        bool load_o_proj) {
   // layers_0_attention_wq_weight
   // layers_0_self_attn_q_proj_weight
-  std::string q_file = layer_name + "_wq_weight";
-  std::string k_file = layer_name + "_wk_weight";
-  std::string v_file = layer_name + "_wv_weight";
-  std::string o_file = layer_name + "_wo_weight";
+  std::string q_file = layer_name + ".q_proj.weight";
+  std::string k_file = layer_name + ".k_proj.weight";
+  std::string v_file = layer_name + ".v_proj.weight";
+  std::string o_file = layer_name + ".o_proj.weight";
   std::vector<std::string> weight_filenames = {q_file, k_file, v_file};
   int file_index = 0;
 
@@ -243,64 +250,64 @@ void load_attention_weights_v2(DT *ptr,
   int replicate_num = num_heads / num_kv_heads;
 
   // stride for q, k, v, o
-  size_t stride_size = (q_size + v_replicate_size + k_replicate_size + o_size) /
+  size_t stride_size = (q_size + v_replicate_size + k_replicate_size) /
                        tensor_parallelism_degree;
-  for (auto filename : weight_filenames) {
-    std::cout << "Loading weight file " << filename << std::endl;
-    std::string weight_filepath = join_path({weights_folder, filename});
+  if (!load_o_proj) {
+    for (auto filename : weight_filenames) {
+      std::cout << "Loading weight file " << filename << std::endl;
+      std::string weight_filepath = join_path({weights_folder, filename});
 
-    int data_index = 0;
-    size_t partial_size = (file_index == 0 || file_index == 3)
-                              ? one_weight_file_size
-                              : single_proj_size * num_kv_heads;
-    size_t one_partition_size =
-        one_weight_file_size / tensor_parallelism_degree;
+      int data_index = 0;
+      size_t partial_size = (file_index == 0 || file_index == 3)
+                                ? one_weight_file_size
+                                : single_proj_size * num_kv_heads;
+      size_t one_partition_size =
+          one_weight_file_size / tensor_parallelism_degree;
 
-    std::ifstream in(weight_filepath, std::ios::in | std::ios::binary);
-    if (!in.good()) {
-      std::cout << "Could not open file: " << weight_filepath << std::endl;
-    }
-    assert(in.good() && "incorrect weight file path");
-    std::vector<DT> host_array(partial_size);
-    size_t loaded_data_size = sizeof(DT) * partial_size;
-    in.seekg(0, in.end);
-    in.seekg(0, in.beg);
-    in.read((char *)host_array.data(), loaded_data_size);
-    size_t in_get_size = in.gcount();
+      std::ifstream in(weight_filepath, std::ios::in | std::ios::binary);
+      if (!in.good()) {
+        std::cout << "Could not open file: " << weight_filepath << std::endl;
+      }
+      assert(in.good() && "incorrect weight file path");
+      std::vector<DT> host_array(partial_size);
+      size_t loaded_data_size = sizeof(DT) * partial_size;
+      in.seekg(0, in.end);
+      in.seekg(0, in.beg);
+      in.read((char *)host_array.data(), loaded_data_size);
+      size_t in_get_size = in.gcount();
 
-    if (in_get_size != loaded_data_size) {
-      std::cout << "load attention data error " << in_get_size << ", "
-                << loaded_data_size << ", " << file_index << ", "
-                << weight_filepath << "\n";
-      assert(false && "data size mismatch");
-    }
-    // wq, wk, wo
-    if (file_index == 0) {
-      for (int i = 0; i < tensor_parallelism_degree; i++) {
-        for (int j = 0; j < one_partition_size; j++) {
-          ptr[base_index + i * stride_size + j] = host_array.at(data_index++);
+      if (in_get_size != loaded_data_size) {
+        std::cout << "load attention data error " << in_get_size << ", "
+                  << loaded_data_size << ", " << file_index << ", "
+                  << weight_filepath << "\n";
+        assert(false && "data size mismatch");
+      }
+      // wq, wk, wo
+      if (file_index == 0) {
+        for (int i = 0; i < tensor_parallelism_degree; i++) {
+          for (int j = 0; j < one_partition_size; j++) {
+            ptr[base_index + i * stride_size + j] = host_array.at(data_index++);
+          }
+        }
+      } else {
+        for (int i = 0; i < num_heads; i++) {
+          int kv_idx = i / (num_heads / num_kv_heads);
+          int head_idx = i % (num_heads / tensor_parallelism_degree);
+          int tp_idx = (i / (num_heads / tensor_parallelism_degree));
+          for (int j = 0; j < single_proj_size; j++) {
+            ptr[base_index + tp_idx * stride_size +
+                single_proj_size * head_idx + j] =
+                host_array.at(kv_idx * single_proj_size + j);
+          }
         }
       }
-    } else {
-      for (int i = 0; i < num_heads; i++) {
-        int kv_idx = i / (num_heads / num_kv_heads);
-        int head_idx = i % (num_heads / tensor_parallelism_degree);
-        int tp_idx = (i / (num_heads / tensor_parallelism_degree));
-        for (int j = 0; j < single_proj_size; j++) {
-          ptr[base_index + tp_idx * stride_size + single_proj_size * head_idx +
-              j] = host_array.at(kv_idx * single_proj_size + j);
-        }
-      }
+      // std::cout << "host array going out of scope, releasing" << endl;
+      base_index += one_partition_size;
+      file_index++;
     }
-
-    // assert(data_index == partial_size);
-    base_index += one_partition_size;
-    file_index++;
-  }
-  assert(base_index == (q_size + k_replicate_size + v_replicate_size) /
-                           tensor_parallelism_degree);
-
-  {
+    assert(base_index == (q_size + k_replicate_size + v_replicate_size) /
+                             tensor_parallelism_degree);
+  } else {
     std::cout << "Loading weight file " << o_file << std::endl;
     std::string weight_filepath = join_path({weights_folder, o_file});
 
@@ -316,6 +323,15 @@ void load_attention_weights_v2(DT *ptr,
     in.read((char *)host_array.data(), loaded_data_size);
     size_t in_get_size = in.gcount();
 
+    DT temp;
+
+    for (int i = 0; i < one_weight_file_size; i++) {
+      temp = host_array.at(i);
+    }
+
+    // std::cout<<"o_proj loaded into host array, total size:
+    // "<<one_weight_file_size<<std::endl;
+
     if (in_get_size != loaded_data_size) {
       std::cout << "load data error" << std::endl;
       assert(false);
@@ -323,20 +339,24 @@ void load_attention_weights_v2(DT *ptr,
     assert(one_weight_file_size == host_array.size());
     int data_index = 0;
 
+    // std::cout<<"read data size checked"<<std::endl;
+
+    for (int i = 0; i < one_weight_file_size; i++) {
+      ptr[i] = temp;
+    }
+
+    // std::cout<<"ptr allocation good"<<std::endl;
+
     int one_partition_size =
         qkv_inner_dim * (num_heads / tensor_parallelism_degree);
     for (int i = 0; i < one_weight_file_size; i++) {
-      int part_idx = (i / one_partition_size) % tensor_parallelism_degree;
-      int block_num = (i / one_partition_size);
-      int offset = block_num / tensor_parallelism_degree * one_partition_size +
-                   (i % one_partition_size);
-      ptr[base_index + part_idx * stride_size + offset] =
-          host_array.at(data_index++);
+      ptr[i] = host_array.at(data_index++);
     }
 
     in.close();
 
     assert(data_index == one_weight_file_size);
+    // std::cout << "Loaded weight file " << o_file << std::endl;
   }
 }
 
@@ -407,12 +427,10 @@ void load_attention_weights_quantized(char *ptr,
                                       std::string weights_folder,
                                       DataType data_type,
                                       bool use_full_precision) {
-  // layers_0_attention_wq_weight
-  // layers_0_self_attn_q_proj_weight
-  std::string q_file = layer_name + "_wq_weight";
-  std::string k_file = layer_name + "_wk_weight";
-  std::string v_file = layer_name + "_wv_weight";
-  std::string o_file = layer_name + "_wo_weight";
+  std::string q_file = layer_name + ".q_proj.weight";
+  std::string k_file = layer_name + ".k_proj.weight";
+  std::string v_file = layer_name + ".v_proj.weight";
+  std::string o_file = layer_name + ".o_proj.weight";
   std::vector<std::string> weight_filenames = {q_file, k_file, v_file, o_file};
 
   int file_index = 0;
@@ -652,14 +670,20 @@ void load_from_quantized_file(char *ptr,
 
 void FileDataLoader::load_quantization_weight(FFModel *ff,
                                               Layer *l,
-                                              int weight_idx) {
-  Tensor weight = l->weights[weight_idx];
-  size_t volume = 1;
+                                              int weight_idx,
+                                              size_t volume,
+                                              size_t num_replicas,
+                                              char *weight,
+                                              DataType data_type,
+                                              Domain weight_domain) {
+  size_t volume_ = 1;
   std::vector<int> dims_vec;
-  for (int i = 0; i < weight->num_dims; i++) {
-    dims_vec.push_back(weight->dims[i]);
-    volume *= weight->dims[i];
+  for (int i = 0; i < weight_domain.get_dim(); i++) {
+    int dim_i = weight_domain.hi()[i] - weight_domain.lo()[i] + 1;
+    dims_vec.push_back(dim_i);
+    volume_ *= dim_i;
   }
+  assert(volume_ == volume * num_replicas);
   char *data = (char *)malloc(sizeof(char) * volume);
 
   std::string weight_filename = removeGuidOperatorName(std::string(l->name));
@@ -674,7 +698,7 @@ void FileDataLoader::load_quantization_weight(FFModel *ff,
                                        qkv_inner_dim,
                                        weight_filename,
                                        weights_folder,
-                                       weight->data_type,
+                                       data_type,
                                        use_full_precision);
     }
     // else {
@@ -690,131 +714,265 @@ void FileDataLoader::load_quantization_weight(FFModel *ff,
     if (weight_idx > 0) {
       assert(weight_idx == 0 || weight_idx == 1);
       if (weight_filename != "embed_tokens_weight_lm_head") {
-        weight_filename += weight_idx == 0 ? "_weight" : "_bias";
+        weight_filename += weight_idx == 0 ? ".weight" : ".bias";
       }
     }
     load_from_quantized_file(data,
                              volume,
                              join_path({weights_folder, weight_filename}),
-                             weight->data_type,
+                             data_type,
                              use_full_precision);
   }
 
-  ParallelTensor weight_pt;
-  ff->get_parallel_tensor_from_tensor(weight, weight_pt);
-  weight_pt->set_tensor<char>(ff, dims_vec, data);
+  char *ptr = weight;
+  for (size_t i = 0; i < num_replicas; i++) {
+    memcpy(ptr, data, volume * sizeof(char));
+    ptr += volume;
+  }
 
-  delete data;
+  free(data);
 }
 
 template <typename DT>
 void FileDataLoader::load_single_weight_tensor(FFModel *ff,
                                                Layer *l,
-                                               int weight_idx) {
-  Tensor weight = l->weights[weight_idx];
+                                               int weight_idx,
+                                               size_t volume,
+                                               size_t num_replicas,
+                                               DT *weight,
+                                               Domain weight_domain) {
 
   // Create a buffer to store weight data from the file
-  size_t volume = 1;
+  size_t volume_ = 1;
   std::vector<int> dims_vec;
-  for (int i = 0; i < weight->num_dims; i++) {
-    dims_vec.push_back(weight->dims[i]);
-    volume *= weight->dims[i];
+  for (int i = 0; i < weight_domain.get_dim(); i++) {
+    int dim_i = weight_domain.hi()[i] - weight_domain.lo()[i] + 1;
+    dims_vec.push_back(dim_i);
+    volume_ *= dim_i;
   }
-  assert(data_type_size(weight->data_type) == sizeof(DT));
+  assert(volume_ == volume * num_replicas);
+  // assert(data_type_size(weight->data_type) == sizeof(DT));
   DT *data = (DT *)malloc(sizeof(DT) * volume);
 
   std::string weight_filename = removeGuidOperatorName(std::string(l->name));
+  bool is_attn_proj = false, is_o_proj = false;
 
-  if (l->op_type == OP_INC_MULTIHEAD_SELF_ATTENTION ||
-      l->op_type == OP_SPEC_INC_MULTIHEAD_SELF_ATTENTION ||
-      l->op_type == OP_TREE_INC_MULTIHEAD_SELF_ATTENTION) {
-    if (weight_filename.find("self_attention") != std::string::npos) {
-      load_attention_weights_multi_query(
-          data, weight_filename, weights_folder, hidden_dim, num_heads);
-    } else if (weight_filename.find("attention") != std::string::npos &&
-               weight_filename.rfind("attention") ==
-                   weight_filename.length() - strlen("attention")) {
-      if (weight_idx == 0) {
-        load_attention_weights_v2(data,
-                                  num_heads,
-                                  num_kv_heads,
-                                  hidden_dim,
-                                  qkv_inner_dim,
-                                  weight_filename,
-                                  weights_folder,
-                                  volume,
-                                  tensor_parallelism_degree);
-      } else {
-        long long value;
-        l->get_int_property("final_bias", value);
-        bool final_bias = (bool)value;
-        load_attention_bias_v2(data,
-                               num_heads,
-                               num_kv_heads,
-                               hidden_dim,
-                               qkv_inner_dim,
-                               final_bias,
-                               weight_filename,
-                               weights_folder);
-      }
-
+  // dense layers for attention projection is named as
+  // self_attn.qkv_proj or self_attn.o_proj
+  // so looking for self_attn. in the name can determine if it is an attention
+  // projection
+  if (weight_filename.find("attn.") != std::string::npos ||
+      weight_filename.find("self_attention.") != std::string::npos) {
+    size_t pos = weight_filename.find(".o_proj");
+    if (pos != std::string::npos) {
+      weight_filename.replace(pos, std::string(".o_proj").length(), "");
+      is_o_proj = true;
     } else {
-      assert(false);
+      pos = weight_filename.find(".qkv_proj");
+      if (pos == std::string::npos) {
+        cout << weight_filename << endl;
+      }
+      assert(pos != std::string::npos);
+      weight_filename.replace(pos, std::string(".qkv_proj").length(), "");
     }
-  } else if (l->op_type == OP_ADD_BIAS_RESIDUAL_LAYERNORM) {
-    assert(weight_idx >= 0 || weight_idx <= 2);
-    weight_filename += (weight_idx == 0)
-                           ? "_attn_bias"
-                           : ((weight_idx == 1) ? "_weight" : "_bias");
-    std::cout << "Loading weight file " << weight_filename << std::endl;
-    std::string weight_filepath = join_path({weights_folder, weight_filename});
-    load_from_file(data, volume, weight_filepath);
-  } else {
-    // default op
-    assert(weight_idx == 0 || weight_idx == 1);
-    // handle exception
-    if (weight_filename != "embed_tokens_weight_lm_head") {
-      weight_filename += weight_idx == 0 ? "_weight" : "_bias";
-    }
-    std::cout << "Loading weight file " << weight_filename << std::endl;
-    std::string weight_filepath = join_path({weights_folder, weight_filename});
-    load_from_file(data, volume, weight_filepath);
+    is_attn_proj = true;
   }
 
-  // Copy the weight data from the buffer to the weight's ParallelTensor
-  ParallelTensor weight_pt;
-  ff->get_parallel_tensor_from_tensor(weight, weight_pt);
-  weight_pt->set_tensor<DT>(ff, dims_vec, data);
+  if (ff->config.benchmarking) {
+    std::cout << "Initializing weight " << weight_filename
+              << " with random data (benchmarking mode)" << std::endl;
+    // If benchmarking, we don't need to load the weights
+    // We can just fill the weight tensor with random data
+  } else {
+    if (l->op_type == OP_INC_MULTIHEAD_SELF_ATTENTION ||
+        l->op_type == OP_SPEC_INC_MULTIHEAD_SELF_ATTENTION ||
+        l->op_type == OP_TREE_INC_MULTIHEAD_SELF_ATTENTION) {
+    } else if (is_attn_proj) {
+      if (is_o_proj) {
+        if (weight_idx == 0) {
+          load_attention_weights_to_dense_v2(data,
+                                             num_heads,
+                                             num_kv_heads,
+                                             hidden_dim,
+                                             qkv_inner_dim,
+                                             weight_filename,
+                                             weights_folder,
+                                             volume,
+                                             tensor_parallelism_degree,
+                                             true);
+        } else {
+          load_attention_o_proj_bias_to_dense_v2(data,
+                                                 num_heads,
+                                                 num_kv_heads,
+                                                 hidden_dim,
+                                                 qkv_inner_dim,
+                                                 weight_filename,
+                                                 weights_folder);
+        }
+      } else {
+        if (weight_idx == 0) {
+          load_attention_weights_to_dense_v2(data,
+                                             num_heads,
+                                             num_kv_heads,
+                                             hidden_dim,
+                                             qkv_inner_dim,
+                                             weight_filename,
+                                             weights_folder,
+                                             volume,
+                                             tensor_parallelism_degree,
+                                             false);
+        } else {
+          load_attention_bias_v2(data,
+                                 num_heads,
+                                 num_kv_heads,
+                                 hidden_dim,
+                                 qkv_inner_dim,
+                                 false, // do not load o_proj bias
+                                 weight_filename,
+                                 weights_folder,
+                                 tensor_parallelism_degree);
+        }
+      }
+    } else if (l->op_type == OP_ADD_BIAS_RESIDUAL_LAYERNORM) {
+      assert(weight_idx >= 0 || weight_idx <= 2);
+      weight_filename += (weight_idx == 0)
+                             ? ".attn_bias"
+                             : ((weight_idx == 1) ? ".weight" : ".bias");
+      std::cout << "Loading weight file " << weight_filename << std::endl;
+      std::string weight_filepath =
+          join_path({weights_folder, weight_filename});
+      load_from_file(data, volume, weight_filepath);
+    } else {
+      // default op
+      assert(weight_idx == 0 || weight_idx == 1);
+      // handle exception
+      if (weight_filename != "embed_tokens_weight_lm_head") {
+        weight_filename += weight_idx == 0 ? ".weight" : ".bias";
+      }
+      std::cout << "Loading weight file " << weight_filename << std::endl;
+      std::string weight_filepath =
+          join_path({weights_folder, weight_filename});
+      load_from_file(data, volume, weight_filepath);
+    }
+  }
+
+  // Copy the weight data from the buffer to the weight
+  DT *ptr = weight;
+  for (size_t i = 0; i < num_replicas; i++) {
+    memcpy(ptr, data, volume * sizeof(DT));
+    ptr += volume;
+  }
 
   // Free buffer memory
-  delete data;
+  free(data);
 }
 
-void FileDataLoader::load_weights(FFModel *ff) {
+void FileDataLoader::load_weight_task(
+    Legion::Task const *task,
+    std::vector<Legion::PhysicalRegion> const &regions,
+    Legion::Context ctx,
+    Legion::Runtime *runtime) {
+  WeightLoadTaskArgs const *args = (WeightLoadTaskArgs const *)task->args;
+
+  assert(task->regions.size() == regions.size());
+  assert(regions.size() == 1); // one weight only
+  GenericTensorAccessorW weight = helperGetGenericTensorAccessorWO(
+      args->data_type, regions[0], task->regions[0], FID_DATA, ctx, runtime);
+  Domain weight_domain = runtime->get_index_space_domain(
+      ctx, task->regions[0].region.get_index_space());
+
+  switch (args->data_type) {
+    case DT_HALF: {
+      args->loader->load_single_weight_tensor<half>(args->ff,
+                                                    args->layer,
+                                                    args->weight_idx,
+                                                    args->volume,
+                                                    args->num_replicas,
+                                                    weight.get_half_ptr(),
+                                                    weight_domain);
+      break;
+    }
+    case DT_FLOAT: {
+      args->loader->load_single_weight_tensor<float>(args->ff,
+                                                     args->layer,
+                                                     args->weight_idx,
+                                                     args->volume,
+                                                     args->num_replicas,
+                                                     weight.get_float_ptr(),
+                                                     weight_domain);
+      break;
+    }
+    case DT_INT4:
+    case DT_INT8: {
+      args->loader->load_quantization_weight(args->ff,
+                                             args->layer,
+                                             args->weight_idx,
+                                             args->volume,
+                                             args->num_replicas,
+                                             weight.get_byte_ptr(),
+                                             args->data_type,
+                                             weight_domain);
+      break;
+    }
+    default:
+      assert(false && "Unsupported data type");
+  }
+}
+
+void FileDataLoader::load_weights_parallel(FFModel *ff,
+                                           Context ctx,
+                                           Runtime *runtime) {
+  std::vector<Future> futures;
+
   for (Layer *l : ff->layers) {
     if (l->numWeights < 1 || l->name == NULL || strlen(l->name) < 1) {
       continue;
     }
+
     for (int i = 0; i < l->numWeights; i++) {
       Tensor weight = l->weights[i];
       if (weight == NULL) {
         continue;
       }
-      switch (weight->data_type) {
-        case DT_HALF:
-          load_single_weight_tensor<half>(ff, l, i);
-          break;
-        case DT_FLOAT:
-          load_single_weight_tensor<float>(ff, l, i);
-          break;
-        case DT_INT4:
-        case DT_INT8:
-          // load weights in quantization
-          load_quantization_weight(ff, l, i);
-          break;
-        default:
-          assert(false && "Unsupported data type");
+
+      if (weight->data_type != DT_FLOAT && weight->data_type != DT_HALF &&
+          weight->data_type != DT_INT4 && weight->data_type != DT_INT8) {
+        assert(false && "Unsupported data type");
       }
+
+      ParallelTensor weight_pt;
+      ff->get_parallel_tensor_from_tensor(weight, weight_pt);
+
+      // Create task arguments
+      size_t volume = 1, num_replicas = 1;
+      if (weight_pt->sync_type == ParameterSyncType::NCCL) {
+        for (int i = 0; i < weight_pt->num_dims; i++) {
+          if (weight_pt->dims[i].is_replica_dim) {
+            num_replicas *= weight_pt->dims[i].size;
+          }
+        }
+      } else if (weight_pt->sync_type == ParameterSyncType::PS) {
+        num_replicas = 1;
+      } else {
+        num_replicas = 1;
+      }
+      for (int i = 0; i < weight->num_dims; i++) {
+        volume *= weight->dims[i];
+      }
+      WeightLoadTaskArgs args(
+          ff, this, l, i, volume, num_replicas, weight->data_type);
+      // launch task asynchronously
+      TaskLauncher launcher(LOAD_WEIGHT_TASK_ID,
+                            TaskArgument(&args, sizeof(WeightLoadTaskArgs)));
+      launcher.add_region_requirement(RegionRequirement(
+          weight_pt->region, WRITE_ONLY, EXCLUSIVE, weight_pt->region));
+      launcher.add_field(0, FID_DATA);
+      futures.push_back(runtime->execute_task(ctx, launcher));
     }
+  }
+
+  // Wait for all tasks to complete
+  for (Future &f : futures) {
+    f.get_void_result();
   }
 }

@@ -46,6 +46,12 @@ class LossType(Enum):
     LOSS_IDENTITY = 54
 
 
+class OptimizerType(Enum):
+    OPTIMIZER_TYPE_NONE = 60
+    OPTIMIZER_TYPE_SGD = 61
+    OPTIMIZER_TYPE_ADAM = 62
+
+
 class CompMode(Enum):
     TRAINING = 70
     INFERENCE = 71
@@ -155,6 +161,11 @@ class OpType(Enum):
     TOPK = 2307
     GROUP_BY = 2308
     AGGREGATE = 2309
+
+
+class RequestType(Enum):
+    REQ_INFERENCE = 4001
+    REQ_FINETUNING = 4002
 
 
 def enum_to_int(enum, enum_item):

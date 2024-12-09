@@ -32,11 +32,13 @@ public:
   void add_float_property(std::string const &key, float value);
   void add_int_vector_property(std::string const &key,
                                std::vector<int> const &value);
+  void add_string_property(std::string const &key, std::string const &value);
   void add_initializer(std::string const &key, Initializer *initializer);
   bool get_int_property(std::string const &key, long long &value) const;
   bool get_float_property(std::string const &key, float &value) const;
   bool get_int_vector_property(std::string const &key,
                                std::vector<int> &value) const;
+  bool get_string_property(std::string const &key, std::string &value) const;
   bool get_initializer(std::string const &key, Initializer *&initializer) const;
   Tensor get_parameter(int index);
   void print();
@@ -49,7 +51,7 @@ public:
   Tensor outputs[MAX_NUM_OUTPUTS];
   Tensor inputs[MAX_NUM_INPUTS];
   Tensor weights[MAX_NUM_WEIGHTS];
-  bool trainableInputs[MAX_NUM_INPUTS];
+  // bool trainable_inputs[MAX_NUM_INPUTS];
   int numInputs, numWeights, numOutputs;
   bool profiling;
   bool inference_debugging;
@@ -59,6 +61,7 @@ private:
   std::unordered_map<std::string, float> float_properties;
   std::unordered_map<std::string, Initializer *> initializers;
   std::unordered_map<std::string, std::vector<int>> int_vector_properties;
+  std::unordered_map<std::string, std::string> string_properties;
 };
 
 }; // namespace FlexFlow

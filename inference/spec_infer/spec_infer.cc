@@ -27,7 +27,7 @@ using namespace FlexFlow;
 using namespace Legion;
 using json = nlohmann::json;
 
-LegionRuntime::Logger::Category log_app("llama");
+Legion::Logger log_app("llama");
 
 struct FilePaths {
   std::string cache_folder_path;
@@ -48,7 +48,8 @@ struct ModelMeta {
   std::string llm_weights_path;
   std::string llm_model_config_path;
 
-  int bos_token_id, eos_token_id;
+  int bos_token_id;
+  std::vector<int> eos_token_ids;
 
   std::vector<ModelType> ssm_model_types;
   std::vector<std::string> ssm_model_config_paths;
@@ -125,7 +126,9 @@ void parse_input_args(char **argv,
     }
   }
   if (paths.cache_folder_path.empty()) {
-    paths.cache_folder_path = "~/.cache/flexflow";
+    char const *ff_cache_path = std::getenv("FF_CACHE_PATH");
+    paths.cache_folder_path = ff_cache_path ? std::string(ff_cache_path)
+                                            : std::string("~/.cache/flexflow");
   }
   // Expand ~ to the home directory if needed
   wordexp_t p;
@@ -193,10 +196,20 @@ void get_model_meta(FilePaths &file_paths,
       llm_model_config.find("bos_token_id") == llm_model_config.end()
           ? -1
           : (int)llm_model_config.at("bos_token_id");
-  model_metadata.eos_token_id =
-      llm_model_config.find("eos_token_id") == llm_model_config.end()
-          ? -1
-          : (int)llm_model_config.at("eos_token_id");
+  // parse eos token id, which can be either a single integer or an array of
+  // integers. Convert to std::vector<int>
+  std::vector<int> eos_token_ids;
+  if (llm_model_config.find("eos_token_id") != llm_model_config.end()) {
+    if (llm_model_config["eos_token_id"].is_array()) {
+      for (auto &eos_token_id : llm_model_config["eos_token_id"]) {
+        model_metadata.eos_token_ids.push_back(eos_token_id);
+      }
+    } else {
+      model_metadata.eos_token_ids.push_back(llm_model_config["eos_token_id"]);
+    }
+  } else {
+    model_metadata.eos_token_ids.push_back(-1);
+  }
 
   for (auto ssm_model_name : model_metadata.model_names.ssm_model_names) {
     std::string ssm_config_path = join_path({file_paths.cache_folder_path,
@@ -246,15 +259,15 @@ void get_model_meta(FilePaths &file_paths,
         ssm_model_config.find("bos_token_id") == ssm_model_config.end()
             ? -1
             : (int)ssm_model_config.at("bos_token_id");
-    int ssm_eos_id =
-        ssm_model_config.find("eos_token_id") == ssm_model_config.end()
-            ? -1
-            : (int)ssm_model_config.at("eos_token_id");
-    if (ssm_bos_id != model_metadata.bos_token_id ||
-        ssm_eos_id != model_metadata.eos_token_id) {
-      printf("Warning: bos/eos token id mismatch between LLM and one of the "
-             "SSMs!\n");
-    }
+    // int ssm_eos_id =
+    //     ssm_model_config.find("eos_token_id") == ssm_model_config.end()
+    //         ? -1
+    //         : (int)ssm_model_config.at("eos_token_id");
+    // if (ssm_bos_id != model_metadata.bos_token_id ||
+    //     ssm_eos_id != model_metadata.eos_token_id) {
+    //   printf("Warning: bos/eos token id mismatch between LLM and one of the "
+    //          "SSMs!\n");
+    // }
     model_metadata.ssm_model_types.push_back(ssm_model_type);
     model_metadata.ssm_model_config_paths.push_back(ssm_config_path);
     model_metadata.ssm_model_weights_paths.push_back(ssm_weights_path);
@@ -315,7 +328,7 @@ void FlexFlow::top_level_task(Task const *task,
   rm->set_max_sequence_length(max_sequence_length);
   rm->register_tokenizer(model_metadata.llm_model_type,
                          model_metadata.bos_token_id,
-                         model_metadata.eos_token_id,
+                         model_metadata.eos_token_ids,
                          model_metadata.llm_tokenizer_path);
   rm->register_output_filepath(file_paths.output_file_path);
 
@@ -434,15 +447,18 @@ void FlexFlow::top_level_task(Task const *task,
                                    /*allow_exceptions */ true,
                                    /*ignore_comments */ true);
 
-    std::vector<std::string> prompts;
+    std::vector<Request> requests;
     for (auto &prompt : prompt_json) {
       std::string text = prompt.get<std::string>();
       printf("Prompt[%d]: %s\n", total_num_requests, text.c_str());
+      // Add inference request
+      Request inference_req;
+      inference_req.prompt = text;
+      inference_req.max_length = 128;
+      requests.push_back(inference_req);
       total_num_requests++;
-      prompts.push_back(text);
-      // tree_model.generate(text, 128 /*max_sequence_length*/);
     }
-    tree_model.generate(prompts, 128 /*max_sequence_length*/);
+    tree_model.generate(requests);
   }
 
   // terminate the request manager by stopping the background thread

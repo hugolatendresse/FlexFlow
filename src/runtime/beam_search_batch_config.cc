@@ -24,7 +24,7 @@
 
 namespace FlexFlow {
 
-LegionRuntime::Logger::Category log_beam_bc("BeamSearchBatchConfig");
+Legion::Logger log_beam_bc("BeamSearchBatchConfig");
 
 BeamSearchBatchConfig::BeamSearchBatchConfig() : BatchConfig() {
   this->beam_width = DEFAULT_BEAM_WIDTH;
@@ -137,8 +137,12 @@ std::ostream &operator<<(std::ostream &os, BeamSearchBatchConfig const &bc) {
       os << "    Number of tokens in batch: "
          << bc.requestsInfo[i].num_tokens_in_batch << std::endl;
       os << "    GUID: " << bc.requestsInfo[i].request_guid << std::endl;
-      os << "    Max sequence length: "
-         << bc.requestsInfo[i].max_sequence_length << std::endl;
+      // PEFT values
+      os << "    PEFT Model ID: " << bc.requestsInfo[i].peft_model_id
+         << std::endl;
+      os << "    PEFT bwd: " << bc.requestsInfo[i].peft_bwd << std::endl;
+      os << "    Max sequence length: " << bc.requestsInfo[i].max_length
+         << std::endl;
       os << "    Request completed: " << bc.request_completed[i] << std::endl;
       os << "    Request running: " << bc.request_running[i] << std::endl;
       os << "    Beam Search Specific: " << std::endl;

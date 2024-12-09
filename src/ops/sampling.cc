@@ -88,7 +88,7 @@ Op *Sampling::create_operator_from_layer(
 SamplingParams Sampling::get_params() const {
   SamplingParams params;
   params.top_p = this->top_p;
-  if (this->name != nullptr) {
+  if (strlen(this->name) < MAX_OPNAME) {
     strcpy(params.name, this->name);
   }
   return params;
@@ -226,10 +226,7 @@ OpMeta *Sampling::init_task(Task const *task,
 
   int length = acc_input.domain.hi()[0] - acc_input.domain.lo()[0] + 1;
   int batch_size = acc_input.domain.get_volume() / length;
-  Memory gpu_mem = Machine::MemoryQuery(Machine::get_machine())
-                       .only_kind(Memory::GPU_FB_MEM)
-                       .best_affinity_to(task->target_proc)
-                       .first();
+  Memory gpu_mem = get_proc_mem(Machine::get_machine(), task->target_proc);
   MemoryAllocator gpu_mem_allocator(gpu_mem);
   SamplingMeta *m = new SamplingMeta(
       handle, s, batch_size, length * batch_size, acc_input, gpu_mem_allocator);
@@ -305,7 +302,7 @@ InferenceResult
   GenericTensorAccessorW indices = helperGetGenericTensorAccessorWO(
       DT_INT32, regions[1], task->regions[1], FID_DATA, ctx, runtime);
 
-  int batch_size = bc->num_active_tokens();
+  int batch_size = bc->num_active_infr_tokens();
   Sampling::forward_kernel_wrapper(m, input, indices, batch_size);
 
   if (m->inference_debugging) {
@@ -316,7 +313,7 @@ InferenceResult
   }
 
   InferenceResult ir;
-  download_tensor<BatchConfig::TokenId>(
+  copy_tensor_dev_to_host<BatchConfig::TokenId>(
       indices.get_int32_ptr(), ir.token_ids, batch_size);
   return ir;
 }

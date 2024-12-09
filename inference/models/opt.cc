@@ -94,82 +94,93 @@ void OPT::create_opt_model(FFModel &ff,
         opt_config.layer_norm_elementwise_affine,
         1e-05,
         true,
+        false,
         DT_NONE,
-        std::string("layers_" + std::to_string(i) + "_attention_layer_norm")
+        std::string("layers." + std::to_string(i) + ".self_attn_layer_norm")
             .c_str());
     Tensor residual = res_ln_outputs[0];
     Tensor hidden_states = res_ln_outputs[1];
 
-    Tensor mha;
+    Tensor qkv_proj = ff.dense(
+        hidden_states,
+        opt_config.hidden_size *
+            3, // q, k, v. need to change if want to remove replication.
+               // (q_heads + 2 * kv_heads) * proj_size
+        AC_MODE_NONE,
+        true,          // seems like it does not use bias
+        DT_NONE,       // what is this
+        nullptr,       // ?
+        nullptr,       // ?
+        nullptr,       // ?
+        REG_MODE_NONE, // no regularization
+        0.0f,          // no dropout
+        std::string("layers." + std::to_string(i) + ".self_attn.qkv_proj")
+            .c_str());
+
+    Tensor o_proj;
     switch (mode) {
       case BEAM_SEARCH_MODE: {
-        mha = ff.spec_inc_multihead_self_attention(
-            hidden_states,
+        o_proj = ff.spec_inc_multihead_self_attention(
+            qkv_proj,
             opt_config.hidden_size,
             opt_config.num_attention_heads,
             opt_config.hidden_size / opt_config.num_attention_heads,
             opt_config.hidden_size / opt_config.num_attention_heads,
             0.0f,    /*dropout*/
-            true,    /*qkv_bias*/
-            false,   /*final_bias*/
             false,   /*add_zero_attn*/
             DT_NONE, /*data_type*/
             NULL,    /*kernel_initializer*/
-            false,   /*apply_rotary_embedding*/
-            true,    /*scaling query*/
+            opt_config.rotary_embedding_meta,
+            true, /*scaling query*/
             pow((opt_config.hidden_size / opt_config.num_attention_heads),
                 -0.5), /*scaling factor*/
             false,     /*qk_prod_scaling*/
             false,     /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_attention")
+            std::string("layers." + std::to_string(i) + ".self_attn")
                 .c_str() /*name*/
         );
         break;
       }
       case TREE_VERIFY_MODE: {
-        mha = ff.inc_multihead_self_attention_verify(
-            hidden_states,
+        o_proj = ff.inc_multihead_self_attention_verify(
+            qkv_proj,
             opt_config.hidden_size,
             opt_config.num_attention_heads,
             opt_config.hidden_size / opt_config.num_attention_heads,
             opt_config.hidden_size / opt_config.num_attention_heads,
             0.0f,    /*dropout*/
-            true,    /*qkv_bias*/
-            false,   /*final_bias*/
             false,   /*add_zero_attn*/
             DT_NONE, /*data_type*/
             NULL,    /*kernel_initializer*/
-            false,   /*apply_rotary_embedding*/
-            true,    /*scaling query*/
+            opt_config.rotary_embedding_meta,
+            true, /*scaling query*/
             pow((opt_config.hidden_size / opt_config.num_attention_heads),
                 -0.5), /*scaling factor*/
             false,     /*qk_prod_scaling*/
             false,     /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_attention")
+            std::string("layers." + std::to_string(i) + ".self_attn")
                 .c_str() /*name*/
         );
         break;
       }
       case INC_DECODING_MODE: {
-        mha = ff.inc_multihead_self_attention(
-            hidden_states,
+        o_proj = ff.inc_multihead_self_attention(
+            qkv_proj,
             opt_config.hidden_size,
             opt_config.num_attention_heads,
             opt_config.hidden_size / opt_config.num_attention_heads,
             opt_config.hidden_size / opt_config.num_attention_heads,
             0.0f,    /*dropout*/
-            true,    /*qkv_bias*/
-            false,   /*final_bias*/
             false,   /*add_zero_attn*/
             DT_NONE, /*data_type*/
             NULL,    /*kernel_initializer*/
-            false,   /*apply_rotary_embedding*/
-            true,    /*scaling query*/
+            opt_config.rotary_embedding_meta,
+            true, /*scaling query*/
             pow((opt_config.hidden_size / opt_config.num_attention_heads),
                 -0.5), /*scaling factor*/
             false,     /*qk_prod_scaling*/
             false,     /*position_bias*/
-            std::string("layers_" + std::to_string(i) + "_attention")
+            std::string("layers." + std::to_string(i) + ".self_attn")
                 .c_str() /*name*/
         );
         break;
@@ -179,6 +190,20 @@ void OPT::create_opt_model(FFModel &ff,
       }
     }
 
+    Tensor mha = ff.dense(
+        o_proj,
+        opt_config.hidden_size,
+        AC_MODE_NONE,
+        false,
+        DT_NONE,
+        nullptr,
+        nullptr,
+        nullptr,
+        REG_MODE_NONE,
+        0.0f,
+        std::string("layers." + std::to_string(i) + ".self_attn.o_proj")
+            .c_str());
+
     ff.add_bias_residual_layer_norm(mha,
                                     residual,
                                     res_ln_outputs,
@@ -186,9 +211,10 @@ void OPT::create_opt_model(FFModel &ff,
                                     opt_config.layer_norm_elementwise_affine,
                                     1e-05,
                                     true,
+                                    false,
                                     DT_NONE,
-                                    std::string("layers_" + std::to_string(i) +
-                                                "_add_bias_residual_layer_norm")
+                                    std::string("layers." + std::to_string(i) +
+                                                ".add_bias_residual_layer_norm")
                                         .c_str());
     added = res_ln_outputs[0];
     Tensor final_norm = res_ln_outputs[1];
@@ -205,7 +231,7 @@ void OPT::create_opt_model(FFModel &ff,
                  nullptr,
                  REG_MODE_NONE,
                  0.0f,
-                 std::string("layers_" + std::to_string(i) + "_fc1").c_str());
+                 std::string("layers." + std::to_string(i) + ".fc1").c_str());
     fc2 = ff.dense(fc1,
                    opt_config.hidden_size,
                    AC_MODE_NONE,
@@ -216,7 +242,7 @@ void OPT::create_opt_model(FFModel &ff,
                    nullptr,
                    REG_MODE_NONE,
                    0.0f,
-                   std::string("layers_" + std::to_string(i) + "_fc2").c_str());
+                   std::string("layers." + std::to_string(i) + ".fc2").c_str());
   }
 
   // final
@@ -229,6 +255,7 @@ void OPT::create_opt_model(FFModel &ff,
                          opt_config.layer_norm_elementwise_affine,
                          1e-05,
                          true,
+                         false,
                          DT_NONE,
                          "final_layer_norm");
   Tensor all_final_norm = res_ln_outputs[1];
@@ -243,7 +270,7 @@ void OPT::create_opt_model(FFModel &ff,
                             nullptr,
                             REG_MODE_NONE,
                             0.0f,
-                            "embed_tokens_weight_lm_head");
+                            "lm_head");
 
   Tensor output;
   if (mode == BEAM_SEARCH_MODE) {
@@ -252,7 +279,15 @@ void OPT::create_opt_model(FFModel &ff,
     output = ff.argmax(softmax, /*beam_Search*/ true);
   } else {
     // output = ff.arg_top_k(lm_head, /*k=*/1, false);
-    output = ff.argmax(lm_head, /*beam_Search*/ false);
+    Tensor softmax = ff.softmax(lm_head, -1);
+    output = ff.argmax(softmax, /*beam_Search*/ false);
+  }
+
+  // If PEFT is enabled, add LoRA layers
+  if (ff.config.enable_peft) {
+    // todo: add attention projections
+    std::vector<std::string> target_modules = {"fc1", "fc2"};
+    ff.add_lora_layers(target_modules);
   }
 
   FileDataLoader *fileloader = new FileDataLoader(
@@ -266,24 +301,6 @@ void OPT::create_opt_model(FFModel &ff,
       use_full_precision);
   InferenceManager *im = InferenceManager::get_inference_manager();
   im->register_model_weights_loader(&ff, fileloader);
-
-#ifdef DEADCODE
-  //------------------- compile the model --------------------------------
-  std::cout << "------start compile ----------" << std::endl;
-  InferenceManager *im = InferenceManager::get_inference_manager();
-  im->compile_model_and_allocate_buffer(&ff);
-  FileDataLoader fileloader("",
-                            weight_file_path,
-                            opt_config.num_attention_heads,
-                            opt_config.num_attention_heads,
-                            opt_config.hidden_size,
-                            opt_config.hidden_size /
-                                opt_config.num_attention_heads,
-                            ff.config.tensor_parallelism_degree);
-  fileloader.load_weights(&ff, use_full_precision);
-  std::cout << "------finished loading weights----------" << std::endl;
-  im->init_operators_inference(&ff);
-#endif
 }
 
 }; // namespace FlexFlow
