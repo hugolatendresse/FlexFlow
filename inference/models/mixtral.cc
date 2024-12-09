@@ -239,7 +239,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_gate")
             .c_str());
 
-    gate = ff.softmax(
+    gate = ff.softmax( // TODO This sfotmax is wrong! not taking across last dim, which is not supported by ff!
         gate, // (num_experts, 1, 128)
         0,
         DT_NONE,
@@ -324,8 +324,11 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
     }
 
-//       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1) //
-//    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128) // TODO causes an error
+    // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
+//       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
+//    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
+
+
 //    Tensor dummy_gate = ff.dense( // TODO try uncommenting the whole block
 //        ff_norm,
 //        mixtral_config.num_local_experts,
@@ -350,14 +353,14 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //    aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
 //    aggregate_inputs[3] = dummy_gate;  // TODO this is a tmp fix
 
-        mlp_out = aggregate_inputs[5]; // TODO don't use just one expert
-//    mlp_out = ff.aggregate(aggregate_inputs,
-////                           topk_values->dims[2],
-//                           mixtral_config.num_local_experts,
-//                           0.0f,
-//                           std::string("layers." + std::to_string(i) +
-//                                       ".block_sparse_moe_experts_aggregate")
-//                               .c_str());
+//        mlp_out = aggregate_inputs[5]; // TODO don't use just one expert
+    mlp_out = ff.aggregate(aggregate_inputs,
+//                           topk_values->dims[2],
+                           mixtral_config.num_local_experts,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_aggregate")
+                               .c_str());
 
   // mlp_out has dimensions (hidden_size, 1, 128)
   printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
