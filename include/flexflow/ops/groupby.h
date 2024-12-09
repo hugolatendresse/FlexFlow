@@ -23,17 +23,16 @@ public:
   using Params = Group_byParams;
   using Input = std::pair<ParallelTensor, ParallelTensor>;
   Group_by(FFModel &model,
+           LayerID const &_layer_guid,
            const ParallelTensor _input,
            const ParallelTensor _assign,
            int _n,
            float _alpha,
-           char const *name,
-           LayerID const &_layer_guid);
+           char const *name);
   Group_by(FFModel &model,
            Group_by const &other,
            const ParallelTensor input,
-           const ParallelTensor assign,
-           LayerID const &_layer_guid);
+           const ParallelTensor assign); // remove this
   Group_by(FFModel &model,
            Params const &params,
            Input const &inputs,

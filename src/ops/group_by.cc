@@ -94,7 +94,7 @@ Op *Group_by::create_operator_from_layer(
   float value2;
   layer->get_float_property("alpha", value2);
   float alpha = value2;
-  return new Group_by(model, inputs[0], inputs[1], n, alpha, layer->name, layer->layer_guid);
+  return new Group_by(model, layer->layer_guid, inputs[0], inputs[1], n, alpha, layer->name);
 }
 
 Group_byParams Group_by::get_params() const {
@@ -119,11 +119,12 @@ bool operator==(Group_byParams const &lhs, Group_byParams const &rhs) {
 }
 
 Group_by::Group_by(FFModel &model,
+                   LayerID const &_layer_guid,
                    const ParallelTensor _input,
                    const ParallelTensor _assign,
                    int _n,
                    float _alpha,
-                   char const *name, LayerID const &_layer_guid)
+                   char const *name)
     : Op(model,
          OP_GROUP_BY,
          _input->data_type,
@@ -160,19 +161,20 @@ Group_by::Group_by(FFModel &model,
 Group_by::Group_by(FFModel &model,
                    Group_by const &other,
                    const ParallelTensor input,
-                   const ParallelTensor assign, LayerID const &_layer_guid)
-    : Group_by(model, input, assign, other.n, other.alpha, other.name, _layer_guid) {}
+                   const ParallelTensor assign)
+    : Group_by(model, other.layer_guid, assign, other.n, other.alpha, other.name) {}
 
 Group_by::Group_by(FFModel &model,
                    Group_byParams const &params,
                    std::pair<ParallelTensor, ParallelTensor> const &inputs,
                    char const *name)
     : Group_by(model,
+               params.layer_guid
                inputs.first,
                inputs.second,
                params.n,
                params.alpha,
-               params.name, params.layer_guid) {}
+               params.name) {}
 
 void Group_by::init_inference(FFModel const &ff,
                               std::vector<ParallelTensor> const &batch_inputs,
