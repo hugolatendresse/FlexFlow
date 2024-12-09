@@ -102,7 +102,7 @@ void parse_input_args(char **argv,
       max_tokens_per_batch = std::stoi(argv[++i]);
       continue;
     }
-    if (!strcmp(argv[i], "--max-sequence-length")) {
+    if (!strcmp(argv[i], "--max-sequence-length")) { // total including prompt
       max_sequence_length = std::stoi(argv[++i]);
       continue;
     }
