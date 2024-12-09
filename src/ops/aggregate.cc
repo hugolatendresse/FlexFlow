@@ -136,6 +136,7 @@ Aggregate::Aggregate(FFModel &model,
   printf("_inputs[0]->dims[2].parallel_idx = %d\n", _inputs[0]->dims[2].parallel_idx);
   printf("_inputs[0]->dims[2].is_replica_dim = %d\n", _inputs[0]->dims[2].is_replica_dim);
 
+
   // TODO uncomment all those assertions
 //  assert(n <= AGGREGATE_MAX_N && "Increase AGGREGATE_MAX_N in #define");
 //  assert(inputs[0]->dims[0].size <= AGGREGATE_MAX_K &&

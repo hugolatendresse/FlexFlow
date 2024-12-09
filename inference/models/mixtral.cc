@@ -250,6 +250,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_softmax")
             .c_str());
 
+
     Tensor topk_out[2] = {nullptr, nullptr};
     printf("gate data_type %d\n", gate->data_type);
     ff.top_k(
@@ -361,7 +362,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //    mlp_out = ff.aggregate(aggregate_inputs,
 //                           topk_values->dims[2],
 //                           mixtral_config.num_local_experts, // TODO don't use just one expert
-//                           1,
 //                           0.0f,
 //                           std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_aggregate").c_str());
 
