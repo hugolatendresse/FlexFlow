@@ -29,10 +29,11 @@ public:
             ParallelTensor const *inputs,
             int _n,
             float _lambda_bal,
-            char const *name = nullptr);
+            char const *name = nullptr,
+            LayerID const &_layer_guid);
   Aggregate(FFModel &model,
             Aggregate const &other,
-            std::vector<ParallelTensor> const &inputs);
+            std::vector<ParallelTensor> const &inputs, LayerID const &_layer_guid);
   Aggregate(FFModel &model,
             Params const &params,
             Input const &inputs,

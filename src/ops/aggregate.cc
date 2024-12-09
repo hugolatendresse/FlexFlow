@@ -83,7 +83,7 @@ Op *Aggregate::create_operator_from_layer(
   layer->get_float_property("lambda_bal", value2);
   float lambda_bal = value2;
   printf("aggregate second: [0] %d", inputs[0]->num_dims);
-  return new Aggregate(model, inputs.data(), n, lambda_bal, layer->name);
+  return new Aggregate(model, inputs.data(), n, lambda_bal, layer->name, layer->layer_guid);
 }
 
 AggregateParams Aggregate::get_params() const {
@@ -111,7 +111,7 @@ Aggregate::Aggregate(FFModel &model,
                      ParallelTensor const *_inputs,
                      int _n,
                      float _lambda_bal,
-                     char const *name)
+                     char const *name, LayerID const &_layer_guid)
     : Op(model,
          OP_AGGREGATE,
          DT_FLOAT,
@@ -129,7 +129,7 @@ Aggregate::Aggregate(FFModel &model,
          "Increase AGGREGATE_MAX_K in #define");
   assert(inputs[0]->dims[1].size <= AGGREGATE_MAX_BATCH_SIZE &&
          "Increase AGGREGATE_MAX_BATCH_SIZE in #define");
-
+  layer_guid = _layer_guid;
   assert(n + 4 == numInputs);
   assert(n > 0);
   //printf("In Aggregate::Aggregate, inputs[0]->num_dims = %d\n", inputs[0]->num_dims);
@@ -139,6 +139,7 @@ Aggregate::Aggregate(FFModel &model,
   assert(inputs[1]->num_dims >= 2 + 1);
   assert(inputs[2]->num_dims >= 2 + 1);
   assert(inputs[3]->num_dims >= 2 + 1);
+  
 
   for (int i = 0; i < inputs[0]->num_dims; i++) {
     assert(inputs[0]->dims[i] == inputs[1]->dims[i]);
@@ -170,15 +171,15 @@ Aggregate::Aggregate(FFModel &model,
 
 Aggregate::Aggregate(FFModel &model,
                      Aggregate const &other,
-                     std::vector<ParallelTensor> const &inputs)
-    : Aggregate(model, inputs.data(), other.n, other.lambda_bal, other.name) {}
+                     std::vector<ParallelTensor> const &inputs, LayerID const &_layer_guid)
+    : Aggregate(model, inputs.data(), other.n, other.lambda_bal, other.name, _layer_guid) {}
 
 Aggregate::Aggregate(FFModel &model,
                      AggregateParams const &params,
                      std::vector<ParallelTensor> const &inputs,
                      char const *name)
     : Aggregate(
-          model, inputs.data(), params.n, params.lambda_bal, params.name) {}
+          model, inputs.data(), params.n, params.lambda_bal, params.name, params.layer_guid) {}
 
 using PCG::Node;
 Node Aggregate::deserialize(FFModel &ff,
@@ -194,7 +195,9 @@ Node Aggregate::deserialize(FFModel &ff,
   dez.deserialize(name_len);
   dez.deserialize(name, name_len);
   assert(num_inputs == n + 4);
+  LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
   AggregateParams params;
+  params.layer_guid = layer_guid;
   params.n = n;
   params.lambda_bal = lambda_bal;
   strcpy(params.name, name);
@@ -590,6 +593,9 @@ void Aggregate::serialize(Legion::Serializer &sez) const {
   sez.serialize(this->lambda_bal);
   sez.serialize(strlen(this->name));
   sez.serialize(this->name, strlen(this->name));
+  sez.serialize(this->layer_guid.id);
+  sez.serialize(this->layer_guid.transformer_layer_id);
+  sez.serialize(this->layer_guid.model_id);
 }
 
 bool Aggregate::measure_operator_cost(Simulator *sim,
