@@ -331,7 +331,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
     }
 
-//       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1) // TODO latest
+       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1) // TODO latest
 //    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128) // TODO causes an error
 //    Tensor dummy_gate = ff.dense( // TODO try uncommenting the whole block
 //        ff_norm,
