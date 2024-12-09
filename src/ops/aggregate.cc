@@ -78,11 +78,12 @@ Op *Aggregate::create_operator_from_layer(
   float value2;
   layer->get_float_property("lambda_bal", value2);
   float lambda_bal = value2;
-  return new Aggregate(model, inputs.data(), n, lambda_bal, layer->name);
+  return new Aggregate(model, layer->layer_guid, inputs.data(), n, lambda_bal, layer->name);
 }
 
 AggregateParams Aggregate::get_params() const {
   AggregateParams params;
+  params.layer_guid = this->layer_guid;
   params.n = this->n;
   params.lambda_bal = this->lambda_bal;
   if (strlen(this->name) < MAX_OPNAME) {
@@ -97,10 +98,11 @@ bool AggregateParams::is_valid(std::vector<ParallelTensorShape> const &) const {
 }
 
 bool operator==(AggregateParams const &lhs, AggregateParams const &rhs) {
-  return lhs.n == rhs.n && lhs.lambda_bal == rhs.lambda_bal;
+  return lhs.n == rhs.n && lhs.lambda_bal == rhs.lambda_bal && lhs.layer_guid == rhs.layer_guid;
 }
 
 Aggregate::Aggregate(FFModel &model,
+                     LayerID const &_layer_guid,
                      ParallelTensor const *_inputs,
                      int _n,
                      float _lambda_bal,
@@ -114,6 +116,7 @@ Aggregate::Aggregate(FFModel &model,
          1 /*outputs*/,
          _inputs),
       n(_n), lambda_bal(_lambda_bal) {
+  layer_guid = _layer_guid;
   // FIXME: For now, set upper limits Better: Do as follows, but memory is
   // assigned per block, so requires to check that
   // https://stackoverflow.com/questions/5531247/allocating-shared-memory/5531640#5531640
@@ -161,20 +164,24 @@ Aggregate::Aggregate(FFModel &model,
 Aggregate::Aggregate(FFModel &model,
                      Aggregate const &other,
                      std::vector<ParallelTensor> const &inputs)
-    : Aggregate(model, inputs.data(), other.n, other.lambda_bal, other.name) {}
+    : Aggregate(model, other.layer_guid, inputs.data(), other.n, other.lambda_bal, other.name) {}
 
 Aggregate::Aggregate(FFModel &model,
                      AggregateParams const &params,
                      std::vector<ParallelTensor> const &inputs,
                      char const *name)
     : Aggregate(
-          model, inputs.data(), params.n, params.lambda_bal, params.name) {}
+          model, params.layer_guid, inputs.data(), params.n, params.lambda_bal, params.name) {}
 
 using PCG::Node;
 Node Aggregate::deserialize(FFModel &ff,
                             Legion::Deserializer &dez,
                             std::vector<ParallelTensor> const &inputs,
                             int num_inputs) {
+  size_t id, transformer_layer_id, deserialized_model_id;
+  dez.deserialize(id);
+  dez.deserialize(transformer_layer_id);
+  dez.deserialize(deserialized_model_id);
   int n;
   float lambda_bal;
   dez.deserialize(n);
@@ -184,7 +191,10 @@ Node Aggregate::deserialize(FFModel &ff,
   dez.deserialize(name_len);
   dez.deserialize(name, name_len);
   assert(num_inputs == n + 4);
+  LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
+
   AggregateParams params;
+  params.layer_guid = layer_guid;
   params.n = n;
   params.lambda_bal = lambda_bal;
   strcpy(params.name, name);
@@ -574,6 +584,9 @@ void Aggregate::backward_task(Task const *task,
 }
 
 void Aggregate::serialize(Legion::Serializer &sez) const {
+  sez.serialize(this->layer_guid.id);
+  sez.serialize(this->layer_guid.transformer_layer_id);
+  sez.serialize(this->layer_guid.model_id);
   sez.serialize(this->n);
   sez.serialize(this->lambda_bal);
   sez.serialize(strlen(this->name));
@@ -671,6 +684,9 @@ namespace std {
 size_t hash<FlexFlow::AggregateParams>::operator()(
     FlexFlow::AggregateParams const &params) const {
   size_t key = 0;
+  hash_combine(key, params.layer_guid.id);
+  hash_combine(key, params.layer_guid.transformer_layer_id);
+  hash_combine(key, params.layer_guid.model_id);
   hash_combine(key, params.n);
   hash_combine(key, params.lambda_bal);
   return key;

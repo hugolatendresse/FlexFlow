@@ -7,6 +7,7 @@
 namespace FlexFlow {
 
 struct AggregateParams {
+  LayerID layer_guid;
   int n;
   float lambda_bal;
   char name[MAX_OPNAME];
