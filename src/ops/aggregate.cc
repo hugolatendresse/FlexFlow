@@ -83,7 +83,7 @@ Op *Aggregate::create_operator_from_layer(
   layer->get_float_property("lambda_bal", value2);
   float lambda_bal = value2;
   printf("aggregate second: [0] %d", inputs[0]->num_dims);
-  return new Aggregate(model, inputs.data(), n, lambda_bal, layer->name, layer->layer_guid);
+  return new Aggregate(model, layer->layer_guid, inputs.data(), n, lambda_bal, layer->name);
 }
 
 AggregateParams Aggregate::get_params() const {
@@ -108,10 +108,11 @@ bool operator==(AggregateParams const &lhs, AggregateParams const &rhs) {
 
 // This runs after mixtral.cc is ran and the prompt is tokenized
 Aggregate::Aggregate(FFModel &model,
+                     LayerID const &_layer_guid,
                      ParallelTensor const *_inputs,
                      int _n,
                      float _lambda_bal,
-                     char const *name, LayerID const &_layer_guid)
+                     char const *name)
     : Op(model,
          OP_AGGREGATE,
          DT_FLOAT,
@@ -170,16 +171,17 @@ Aggregate::Aggregate(FFModel &model,
 }
 
 Aggregate::Aggregate(FFModel &model,
+                     LayerID const &_layer_guid,
                      Aggregate const &other,
-                     std::vector<ParallelTensor> const &inputs, LayerID const &_layer_guid)
-    : Aggregate(model, inputs.data(), other.n, other.lambda_bal, other.name, _layer_guid) {}
+                     std::vector<ParallelTensor> const &inputs)
+    : Aggregate(model, _layer_guid, inputs.data(), other.n, other.lambda_bal, other.name) {}
 
 Aggregate::Aggregate(FFModel &model,
                      AggregateParams const &params,
                      std::vector<ParallelTensor> const &inputs,
                      char const *name)
     : Aggregate(
-          model, inputs.data(), params.n, params.lambda_bal, params.name, params.layer_guid) {}
+          model, params.layer_guid, inputs.data(), params.n, params.lambda_bal, params.name) {}
 
 using PCG::Node;
 Node Aggregate::deserialize(FFModel &ff,

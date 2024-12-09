@@ -26,14 +26,15 @@ public:
   using Params = AggregateParams;
   using Input = std::vector<ParallelTensor>;
   Aggregate(FFModel &model,
+            LayerID const &_layer_guid,
             ParallelTensor const *inputs,
             int _n,
             float _lambda_bal,
-            char const *name = nullptr,
-            LayerID const &_layer_guid);
+            char const *name = nullptr);
   Aggregate(FFModel &model,
+            LayerID const &_layer_guid,
             Aggregate const &other,
-            std::vector<ParallelTensor> const &inputs, LayerID const &_layer_guid);
+            std::vector<ParallelTensor> const &inputs);
   Aggregate(FFModel &model,
             Params const &params,
             Input const &inputs,
