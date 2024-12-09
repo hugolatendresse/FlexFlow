@@ -283,7 +283,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
 //    for (int expert_idx = 1; expert_idx < 2; expert_idx++) {
 	Tensor w1 = ff.dense(
-        			   ff_norm, // TODO use grouped tokens
+        			   grouped_tokens[expert_idx], // TODO use grouped tokens
                        mixtral_config.intermediate_size,
                        AC_MODE_NONE,
                        false,
@@ -297,7 +297,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                                        std::to_string(expert_idx) + "_w1").c_str());
 
   	Tensor w3 = ff.dense(
-            		   ff_norm,
+            		   grouped_tokens[expert_idx],
                        mixtral_config.intermediate_size,
                        AC_MODE_NONE,
                        false,
