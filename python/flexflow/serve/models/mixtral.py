@@ -34,7 +34,7 @@ class MixtralConfig:
         self.rms_norm_eps = hf_config.rms_norm_eps
         self.rope_theta = hf_config.rope_theta
         self.router_aux_loss_coef = hf_config.router_aux_loss_coef
-        self.sliding_window = hf_config.sliding_window
+        # self.sliding_window = hf_config.sliding_window # TODO
         self.tie_word_embeddings = hf_config.tie_word_embeddings
         self.vocab_size = hf_config.vocab_size
 

@@ -186,7 +186,7 @@ void RequestManager::register_tokenizer(ModelType type,
   this->eos_token_ids = eos_token_ids;
   std::filesystem::path tokenizer_folder(path);
 
-  if (model_type == ModelType::LLAMA) {
+  if (model_type == ModelType::LLAMA || model_type == ModelType::MIXTRAL) {
     // try with tokenizer.json first
     std::filesystem::path tokenizer_json_path;
     if (std::filesystem::is_directory(tokenizer_folder)) {
