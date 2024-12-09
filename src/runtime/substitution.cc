@@ -3669,7 +3669,7 @@ bool FFModel::convert_graph_to_operators(
       }
       case OP_AGGREGATE: {
         Aggregate *aggr = (Aggregate *)node.ptr;
-        new_op = new Aggregate(*this, inputs, aggr->n, aggr->lambda_bal, NULL);
+        new_op = new Aggregate(*this, aggr->layer_guid, inputs, aggr->n, aggr->lambda_bal, NULL);
         break;
       }
       case OP_EXPERTS: {
