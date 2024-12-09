@@ -263,11 +263,16 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor topk_values = topk_out[0]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
     Tensor topk_indices = topk_out[1]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
 
+
+    // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
+    //    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
+    //    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
+
 //    TODO understand why this causes graph.cc complains that last layer has multiple inputs
 //      Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
 //      ff.group_by(
 //          ff_norm,
-//          topk_indices,
+//          topk_indices, // (experts_per_tok, 1, 128) (confirmed 3 dims)
 //          grouped_tokens,
 //          mixtral_config.num_local_experts,
 //          0.0f,
@@ -276,11 +281,10 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     // grouped_tokens[0] has dims (1024, 1, 0)
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
-    Tensor one_aggregate_inputs[1] = {nullptr};
 
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
-	Tensor w1 = ff.dense(
-        			   ff_norm, // TODO should use grouped_tokens here. Dimensions of expert input will be wrong
+	  Tensor w1 = ff.dense(
+        			   ff_norm, // TODO should use grouped_tokens[expert_idx] here. Dimensions of expert input will be wrong
                        mixtral_config.intermediate_size,
                        AC_MODE_NONE,
                        false,
@@ -293,8 +297,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w1").c_str());
 
-  	Tensor w3 = ff.dense(
-            		   ff_norm, // TODO should use grouped_tokens here. Dimensions of expert input will be wrong
+  	  Tensor w3 = ff.dense(
+            		   ff_norm, // TODO should use grouped_tokens[expert_idx] here. Dimensions of expert input will be wrong
                        mixtral_config.intermediate_size,
                        AC_MODE_NONE,
                        false,
@@ -307,9 +311,9 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w3").c_str());
 
-  Tensor multi = ff.sigmoid_silu_multi(w1, w3); //DT_NONE,std::string("layers." + std::to_string(i) +".block_sparse_moe_experts." +std::to_string(expert_idx) + "ssm").c_str());
+      Tensor multi = ff.sigmoid_silu_multi(w1, w3); //DT_NONE,std::string("layers." + std::to_string(i) +".block_sparse_moe_experts." +std::to_string(expert_idx) + "ssm").c_str());
 
-  Tensor w2 = ff.dense( // output has dims (1024, 1, 0), 3 dims confirmed
+      Tensor w2 = ff.dense( // output has dims (1024, 1, 0), 3 dims confirmed
       				   multi,
                        mixtral_config.hidden_size,
                        AC_MODE_NONE,
@@ -322,12 +326,9 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        0.0f,
                        std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w2").c_str());
-    aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
+      aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
     }
 
-      // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
-//       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
-//    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
 
     aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
     aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
