@@ -60,3 +60,9 @@ for file in "$TARGET_DIR"/*attn_*; do
     mv "$file" "${file//attn_/attn.}"
   fi
 done
+
+for file in "$TARGET_DIR"/*embed_token_weight*; do
+  if [[ -f "$file" ]]; then
+    mv "$file" "${file//embed_token_weight/embed_token.weight}"
+  fi
+done
