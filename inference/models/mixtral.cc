@@ -248,6 +248,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
         Tensor topk_out[2] = {nullptr, nullptr};
 
+
     /* TODO understand why I get the following error
         [0 - 7238bc615000]   4.547830 {5}{runtime}: [error 545] LEGION ERROR: Error creating accessor for field 0 with
         a type of size 4 bytes when the field was originally allocated with a size of 2 bytes in task TopK Forward
