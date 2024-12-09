@@ -32,43 +32,136 @@ public:
         try {
           json model_config;
           config_file >> model_config;
-          num_hidden_layers = model_config["num_hidden_layers"];
-          vocab_size = model_config["vocab_size"];
-          num_attention_heads = model_config["num_attention_heads"];
-          if (model_config.find("num_key_value_heads") != model_config.end()) {
-            num_key_value_heads = model_config["num_key_value_heads"];
-          } else {
-            num_key_value_heads = num_attention_heads;
+
+          try {
+            max_position_embeddings = model_config.at("max_position_embeddings");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'max_position_embeddings': " << e.what() << std::endl;
+            assert(false);
           }
-          hidden_size = model_config["hidden_size"];
-          rms_norm_eps = model_config["rms_norm_eps"];
-          intermediate_size = model_config["intermediate_size"];
-          rotary_embedding_meta.apply_rotary_embedding = true;
-          if (model_config.find("rope_theta") != model_config.end()) {
-            rotary_embedding_meta.rope_theta = model_config["rope_theta"];
-          } else {
-            rotary_embedding_meta.rope_theta = 10000.0f;
+
+          try {
+            num_hidden_layers = model_config.at("num_hidden_layers");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'num_hidden_layers': " << e.what() << std::endl;
+            assert(false);
           }
-          if (model_config.find("scaling_factor") != model_config.end() &&
-              !model_config["scaling_factor"].is_null()) {
-            rotary_embedding_meta.rope_type =
-                model_config["scaling_factor"]["rope_type"];
-            rotary_embedding_meta.factor =
-                model_config["scaling_factor"]["factor"];
-            rotary_embedding_meta.low_freq_factor =
-                model_config["scaling_factor"]["low_freq_factor"];
-            rotary_embedding_meta.high_freq_factor =
-                model_config["scaling_factor"]["high_freq_factor"];
-            rotary_embedding_meta.original_max_position_embeddings =
-                model_config["scaling_factor"]
-                            ["original_max_position_embeddings"];
-                }
-          num_experts_per_tok = model_config["num_experts_per_tok"];
-          num_local_experts = model_config["num_local_experts"];
-          output_router_logits = model_config["output_router_logits"];
-          router_aux_loss_coef = model_config["router_aux_loss_coef"];
-          sliding_window = model_config["sliding_window"];
-          tie_word_embeddings = model_config["tie_word_embeddings"];
+
+          try {
+            vocab_size = model_config.at("vocab_size");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'vocab_size': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            num_attention_heads = model_config.at("num_attention_heads");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'num_attention_heads': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            if (model_config.find("num_key_value_heads") != model_config.end()) {
+              num_key_value_heads = model_config["num_key_value_heads"];
+            } else {
+              num_key_value_heads = num_attention_heads;
+            }
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'num_key_value_heads': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            hidden_size = model_config.at("hidden_size");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'hidden_size': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            rms_norm_eps = model_config.at("rms_norm_eps");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'rms_norm_eps': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            intermediate_size = model_config.at("intermediate_size");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'intermediate_size': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            rotary_embedding_meta.apply_rotary_embedding = true;
+            if (model_config.find("rope_theta") != model_config.end()) {
+              rotary_embedding_meta.rope_theta = model_config["rope_theta"];
+            } else {
+              rotary_embedding_meta.rope_theta = 10000.0f;
+            }
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'rope_theta': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            if (model_config.find("scaling_factor") != model_config.end() &&
+                !model_config["scaling_factor"].is_null()) {
+              rotary_embedding_meta.rope_type = model_config["scaling_factor"]["rope_type"];
+              rotary_embedding_meta.factor = model_config["scaling_factor"]["factor"];
+              rotary_embedding_meta.low_freq_factor = model_config["scaling_factor"]["low_freq_factor"];
+              rotary_embedding_meta.high_freq_factor = model_config["scaling_factor"]["high_freq_factor"];
+              rotary_embedding_meta.original_max_position_embeddings =
+                  model_config["scaling_factor"]["original_max_position_embeddings"];
+            }
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'scaling_factor': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            num_experts_per_tok = model_config.at("num_experts_per_tok");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'num_experts_per_tok': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            num_local_experts = model_config.at("num_local_experts");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'num_local_experts': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            output_router_logits = model_config.at("output_router_logits");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'output_router_logits': " << e.what() << std::endl;
+            assert(false);
+          }
+
+          try {
+            router_aux_loss_coef = model_config.at("router_aux_loss_coef");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'router_aux_loss_coef': " << e.what() << std::endl;
+            assert(false);
+          }
+
+//          try { // TODO sliding_window is null in the JSON config file of mistralai/Mixtral-8x7B-v0.1
+//            sliding_window = model_config.at("sliding_window");
+//          } catch (json::exception const &e) {
+//            std::cerr << "Error reading 'sliding_window': " << e.what() << std::endl;
+//            assert(false);
+//          }
+
+          try {
+            tie_word_embeddings = model_config.at("tie_word_embeddings");
+          } catch (json::exception const &e) {
+            std::cerr << "Error reading 'tie_word_embeddings': " << e.what() << std::endl;
+            assert(false);
+          }
+
         } catch (json::exception const &e) {
           std::cerr << "Error parsing JSON file: " << e.what() << std::endl;
           assert(false);
@@ -102,7 +195,7 @@ public:
       std::cout << "\trope_theta: " << rope_theta << std::endl;
       std::cout << "\trouter_aux_loss_coef: " << router_aux_loss_coef
                 << std::endl;
-      std::cout << "\tsliding_window: " << sliding_window << std::endl;
+//      std::cout << "\tsliding_window: " << sliding_window << std::endl; // TODO
       std::cout << "\ttie_word_embeddings: " << tie_word_embeddings
                 << std::endl;
       std::cout << "\tvocab_size: " << vocab_size << std::endl;
@@ -118,7 +211,7 @@ public:
     float rms_norm_eps;
     float rope_theta;
     float router_aux_loss_coef;
-    int sliding_window;
+//    int sliding_window; // TODO
     bool tie_word_embeddings;
     int vocab_size;
     int max_beam_width, max_beam_depth;

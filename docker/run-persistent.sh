@@ -118,12 +118,10 @@ if [[ "$(docker images -q "${image}-${FF_GPU_BACKEND}${gpu_backend_version}":lat
   exit 1
 fi
 
-hf_token_volume=""
-hf_token_path="$HOME/.cache/huggingface/token"
-if [ -f "$hf_token_path" ]; then
-  # If the token exists, add the volume mount to the Docker command
-  hf_token_volume+="-v $hf_token_path:/root/.cache/huggingface/token"
-fi
+cache_volume="-v cache_volume:/root/.cache"
+home_volume="-v home_volume:/home"
+tmp_volume="-v tmp_volume:/tmp"
+
 
 ssh_key_volume=""
 ssh_key_path="$HOME/.ssh/id_rsa"
@@ -131,6 +129,6 @@ if [ -f "$ssh_key_path" ] && [ -f "$ssh_key_path.pub" ]; then
   ssh_key_volume="-v $ssh_key_path:/root/.ssh/id_rsa -v $ssh_key_path.pub:/root/.ssh/id_rsa.pub"
 fi
 
-docker_command="docker run -it $gpu_arg --shm-size=${SHM_SIZE} --cap-add=SYS_PTRACE ${ssh_key_volume} ${hf_token_volume} ${port_forward_arg} ${image}-${FF_GPU_BACKEND}${gpu_backend_version}:latest"
+docker_command="docker run -it -p 2222:22 $gpu_arg --shm-size=${SHM_SIZE} --cap-add=SYS_PTRACE ${ssh_key_volume} ${cache_volume} ${home_volume} ${tmp_volume} ${port_forward_arg} ${image}-${FF_GPU_BACKEND}${gpu_backend_version}:latest"
 echo "$docker_command"
 eval "$docker_command"
