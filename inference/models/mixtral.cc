@@ -329,7 +329,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
     }
 
-    // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
+     // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
 //       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
 //    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
 
