@@ -88,6 +88,7 @@ Op *Aggregate::create_operator_from_layer(
 
 AggregateParams Aggregate::get_params() const {
   AggregateParams params;
+  params.layer_guid = this->layer_guid;
   params.n = this->n;
   params.lambda_bal = this->lambda_bal;
   if (strlen(this->name) < MAX_OPNAME) {
