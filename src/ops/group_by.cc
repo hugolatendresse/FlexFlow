@@ -163,11 +163,10 @@ Group_by::Group_by(FFModel &model,
 
 Group_by::Group_by(FFModel &model,
                    Group_by const &other,
-                   Group_byParams const &params,
                    const ParallelTensor input,
                    const ParallelTensor assign)
     : Group_by(model,
-               params.layer_guid,
+               other.layer_guid,
                input,
                assign,
                other.n,

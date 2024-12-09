@@ -26,6 +26,7 @@ public:
   using Params = AggregateParams;
   using Input = std::vector<ParallelTensor>;
   Aggregate(FFModel &model,
+            LayerID const &_layer_guid,
             ParallelTensor const *inputs,
             int _n,
             float _lambda_bal,
