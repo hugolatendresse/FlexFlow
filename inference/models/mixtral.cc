@@ -278,11 +278,9 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     Tensor one_aggregate_inputs[1] = {nullptr};
 
-    // TODO don't use only one expert
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
-//    for (int expert_idx = 1; expert_idx < 2; expert_idx++) {
 	Tensor w1 = ff.dense(
-        			   ff_norm,
+        			   ff_norm, // TODO should use grouped_tokens here. Dimensions of expert input will be wrong
                        mixtral_config.intermediate_size,
                        AC_MODE_NONE,
                        false,
@@ -296,7 +294,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                                        std::to_string(expert_idx) + "_w1").c_str());
 
   	Tensor w3 = ff.dense(
-            		   ff_norm,
+            		   ff_norm, // TODO should use grouped_tokens here. Dimensions of expert input will be wrong
                        mixtral_config.intermediate_size,
                        AC_MODE_NONE,
                        false,
@@ -331,26 +329,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
 //    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
 
-
-//    Tensor dummy_gate = ff.dense( // TODO try uncommenting the whole block
-//        ff_norm,
-//        mixtral_config.num_local_experts,
-//        AC_MODE_NONE,
-//        false,
-//        DT_NONE,
-//        nullptr,
-//        nullptr,
-//        nullptr,
-//        REG_MODE_NONE,
-//        0.0f,
-//        std::string("layers." + std::to_string(i) + ".block_sparse_moe_gate")
-//            .c_str());
-//    dummy_gate = ff.softmax(
-//        gate,
-//        0,
-//        DT_NONE,
-//        std::string("dummy_gate").c_str());
-//
     aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
     aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
     aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
@@ -359,7 +337,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         mlp_out = aggregate_inputs[5]; // TODO don't use just one expert
 //    mlp_out = ff.aggregate(aggregate_inputs,
 ////                           topk_values->dims[2],
-//                           mixtral_config.num_local_experts, // TODO don't use just one expert
+//                           mixtral_config.num_local_experts,
 //                           0.0f,
 //                           std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_aggregate").c_str());
 
@@ -367,7 +345,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
   printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
   assert(mlp_out->dims[0] == mixtral_config.hidden_size && "mlp_out dims[0] != hidden_size");
   assert(mlp_out->dims[1] == 1 && "mlp_out dims[1] != 1");
-//  assert(mlp_out->dims[2] == 128 && "mlp_out dims[2] != 128"); // TODO update with new seq len
+  assert(mlp_out->dims[2] == 128 && "mlp_out dims[2] != 128");
   printf("seq length is now %d\n", mlp_out->dims[2]);
 
  }
