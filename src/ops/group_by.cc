@@ -602,13 +602,14 @@ void Group_by::backward_task(Task const *task,
 }
 
 void Group_by::serialize(Legion::Serializer &sez) const {
+  sez.serialize(this->layer_guid.id);
+  sez.serialize(this->layer_guid.transformer_layer_id);
+  sez.serialize(this->layer_guid.model_id);
   sez.serialize(this->n);
   sez.serialize(this->alpha);
   sez.serialize(strlen(this->name));
   sez.serialize(this->name, strlen(this->name));
-  sez.serialize(this->layer_guid.id);
-  sez.serialize(this->layer_guid.transformer_layer_id);
-  sez.serialize(this->layer_guid.model_id);
+  
 }
 
 Node Group_by::deserialize(FFModel &ff,
