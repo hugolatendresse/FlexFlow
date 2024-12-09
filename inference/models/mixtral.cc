@@ -175,6 +175,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     token = token_ff_norm[0];
     Tensor ff_norm = token_ff_norm[1];
 
+    mixtral_config.num_local_experts = 1;
+
     // MoE
     Tensor gate = ff.dense(
         ff_norm, // (hidden_size, 1, 128)
@@ -220,7 +222,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     // grouped_tokens[0] has dims (1024, 1, 0)
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
-    for (int expert_idx = 0; expert_idx < 1; expert_idx++) {
+    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
       Tensor w1 = ff.dense(grouped_tokens[expert_idx],
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
