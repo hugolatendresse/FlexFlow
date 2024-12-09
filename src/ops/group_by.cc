@@ -99,6 +99,7 @@ Op *Group_by::create_operator_from_layer(
 
 Group_byParams Group_by::get_params() const {
   Group_byParams params;
+  params.layer_guid = this->layer_guid;
   params.n = this->n;
   params.alpha = this->alpha;
   if (strlen(this->name) < MAX_OPNAME) {

@@ -7,6 +7,7 @@
 namespace FlexFlow {
 
 struct Group_byParams {
+  LayerID layer_guid;
   int n;
   float alpha;
   char name[MAX_OPNAME];
