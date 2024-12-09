@@ -66,3 +66,9 @@ for file in "$TARGET_DIR"/*embed_tokens_weight*; do
     mv "$file" "${file//embed_tokens_weight/embed_tokens.weight}"
   fi
 done
+
+for file in "$TARGET_DIR"/*layernorm_weight*; do
+  if [[ -f "$file" ]]; then
+    mv "$file" "${file//layernorm_weight/layernorm.weight}"
+  fi
+done
