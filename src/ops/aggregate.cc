@@ -129,7 +129,7 @@ Aggregate::Aggregate(FFModel &model,
   assert(n + 4 == numInputs);
   assert(n > 0);
   //printf("In Aggregate::Aggregate, inputs[0]->num_dims = %d\n", inputs[0]->num_dims);
-  //printf("In Aggregate::Aggregate, inputs[0] dims are %d %d %d %d\n", inputs[0]->dims[0].size, inputs[0]->dims[1].size, inputs[0]->dims[2].size, inputs[0]->dims[3].size);
+  printf("In Aggregate::Aggregate, inputs[0] dims are %d %d %d %d\n", inputs[0]->dims[0].size, inputs[0]->dims[1].size, inputs[0]->dims[2].size, inputs[0]->dims[3].size);
   // TODO the inequalities below used to be equalities, not sure it's a good idea to switch to inequalities
   assert(inputs[0]->num_dims == 2 + 1);  // inputs[0] has dims (experts_per_token, 1, 128, 1) (confirmed dim count)
   assert(inputs[1]->num_dims == 2 + 1);
