@@ -158,11 +158,11 @@ Group_by::Group_by(FFModel &model,
   numWeights = 0;
 }
 
-Group_by::Group_by(FFModel &model,
-                   Group_by const &other,
-                   const ParallelTensor input,
-                   const ParallelTensor assign)
-    : Group_by(model, other.layer_guid, assign, other.n, other.alpha, other.name) {}
+// Group_by::Group_by(FFModel &model,
+//                    Group_by const &other,
+//                    const ParallelTensor input,
+//                    const ParallelTensor assign)
+//     : Group_by(model, other.layer_guid, assign, other.n, other.alpha, other.name) {}
 
 Group_by::Group_by(FFModel &model,
                    Group_byParams const &params,
