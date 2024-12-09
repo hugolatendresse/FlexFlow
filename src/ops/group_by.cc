@@ -94,13 +94,14 @@ Op *Group_by::create_operator_from_layer(
   float value2;
   layer->get_float_property("alpha", value2);
   float alpha = value2;
-  return new Group_by(model, inputs[0], inputs[1], n, alpha, layer->name);
+  return new Group_by(model, layer->layer_guid, inputs[0], inputs[1], n, alpha, layer->name);
 }
 
 Group_byParams Group_by::get_params() const {
   Group_byParams params;
   params.n = this->n;
   params.alpha = this->alpha;
+  params.layer_guid = this->layer_guid;
   if (strlen(this->name) < MAX_OPNAME) {
     strcpy(params.name, this->name);
   }
@@ -114,10 +115,11 @@ bool Group_byParams::is_valid(
 }
 
 bool operator==(Group_byParams const &lhs, Group_byParams const &rhs) {
-  return lhs.n == rhs.n && lhs.alpha == rhs.alpha;
+  return lhs.n == rhs.n && lhs.alpha == rhs.alpha && lhs.layer_guid == rhs.layer_guid;
 }
 
 Group_by::Group_by(FFModel &model,
+                   LayerID const &_layer_guid,
                    const ParallelTensor _input,
                    const ParallelTensor _assign,
                    int _n,
@@ -136,6 +138,9 @@ Group_by::Group_by(FFModel &model,
   assert(_input->dims[1] == _assign->dims[1]);
   assert(n > 0);
   assert(inputs[0] != nullptr);
+
+  // overwrite layer_guid
+  layer_guid = _layer_guid;
 
   int k = _assign->dims[0].size;
   int num_dims = _input->num_dims;
@@ -158,15 +163,23 @@ Group_by::Group_by(FFModel &model,
 
 Group_by::Group_by(FFModel &model,
                    Group_by const &other,
+                   Group_byParams const &params,
                    const ParallelTensor input,
                    const ParallelTensor assign)
-    : Group_by(model, input, assign, other.n, other.alpha, other.name) {}
+    : Group_by(model,
+               params.layer_guid,
+               input,
+               assign,
+               other.n,
+               other.alpha,
+               other.name) {}
 
 Group_by::Group_by(FFModel &model,
                    Group_byParams const &params,
                    std::pair<ParallelTensor, ParallelTensor> const &inputs,
                    char const *name)
     : Group_by(model,
+               params.layer_guid,
                inputs.first,
                inputs.second,
                params.n,
@@ -599,6 +612,9 @@ void Group_by::backward_task(Task const *task,
 }
 
 void Group_by::serialize(Legion::Serializer &sez) const {
+  sez.serialize(this->layer_guid.id);
+  sez.serialize(this->layer_guid.transformer_layer_id);
+  sez.serialize(this->layer_guid.model_id);
   sez.serialize(this->n);
   sez.serialize(this->alpha);
   sez.serialize(strlen(this->name));
@@ -610,6 +626,10 @@ Node Group_by::deserialize(FFModel &ff,
                            ParallelTensor inputs[],
                            int num_inputs) {
   assert(num_inputs == 2);
+  size_t id, transformer_layer_id, deserialized_model_id;
+  dez.deserialize(id);
+  dez.deserialize(transformer_layer_id);
+  dez.deserialize(deserialized_model_id);
   int n;
   float alpha;
   dez.deserialize(n);
@@ -618,7 +638,10 @@ Node Group_by::deserialize(FFModel &ff,
   char name[MAX_OPNAME] = {0};
   dez.deserialize(name_len);
   dez.deserialize(name, name_len);
+  LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
+
   Group_byParams params;
+  params.layer_guid = layer_guid;
   params.n = n;
   params.alpha = alpha;
   strcpy(params.name, name);
@@ -705,6 +728,9 @@ namespace std {
 size_t hash<FlexFlow::Group_byParams>::operator()(
     FlexFlow::Group_byParams const &params) const {
   size_t key = 0;
+  hash_combine(key, params.layer_guid.id);
+  hash_combine(key, params.layer_guid.transformer_layer_id);
+  hash_combine(key, params.layer_guid.model_id);
   hash_combine(key, params.n);
   hash_combine(key, params.alpha);
   return key;
