@@ -246,13 +246,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_softmax")
             .c_str());
 
-
-
-    /* TODO understand why I get the following error
-        [0 - 7238bc615000]   4.547830 {5}{runtime}: [error 545] LEGION ERROR: Error creating accessor for field 0 with
-        a type of size 4 bytes when the field was originally allocated with a size of 2 bytes in task TopK Forward
-        Task (UID 1698) (from file /home/FlexFlow/deps/legion/runtime/legion/runtime.cc:5451)
-     */
     Tensor topk_out[2] = {nullptr, nullptr};
     printf("gate data_type %d\n", gate->data_type);
     ff.top_k(
@@ -404,7 +397,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
       Tensor softmax = ff.softmax(dense, -1);
       output = ff.sampling(softmax, generation_config.topp);
     } else {
-      Tensor softmax = ff.softmax(dense, -1); // TODO added that to copy llama
+      Tensor softmax = ff.softmax(dense, -1); // TODO added that to copy llama, see if needed in HF transformers impl.
       output = ff.argmax(softmax, /*beam_Search*/ false);
     }
 
