@@ -8,6 +8,7 @@ namespace FlexFlow {
 
 struct AggregateParams {
   int n;
+  LayerID layer_guid;
   float lambda_bal;
   char name[MAX_OPNAME];
   bool is_valid(std::vector<ParallelTensorShape> const &) const;
