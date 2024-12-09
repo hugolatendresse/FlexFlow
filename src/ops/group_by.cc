@@ -60,11 +60,11 @@ void FFModel::group_by(const Tensor input,
     int k = assign->dims[0];
     int num_dims = input->num_dims;
     int dims[num_dims];
-    for (int i = 0; i < num_dims; i++) {
+    for (int i = 0; i < num_dims - 1; i++) { 
       dims[i] = input->dims[i];
     }
     // Batch dimension is replaced by max expert capacity
-    if (alpha != 0.0f) {
+    if (alpha == 0.0f) { // changed from != 
       dims[num_dims - 1] = (int)ceil(alpha * k / n * input->dims[num_dims - 1]);
     }
     for (int i = 0; i < n; i++) {

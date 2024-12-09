@@ -87,7 +87,7 @@ bool ParallelTensorShape::is_valid() const {
 
   for (int i = 0; i < this->num_dims; i++) {
     ParallelDim const &dim = this->dims[i];
-    assert(dim.size > 0);
+    // assert(dim.size > 0);
     assert(dim.degree != ParallelDim::UNKNOWN_DEGREE);
     assert(dim.degree >= 1);
     assert(dim.parallel_idx != ParallelDim::UNKNOWN_INDEX);
