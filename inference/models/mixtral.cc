@@ -352,20 +352,18 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //        DT_NONE,
 //        std::string("dummy_gate").c_str());
 //
-        aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
+    aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
     aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
     aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
     aggregate_inputs[3] = gate;  // TODO this is a tmp fix TODO decide vs dummygate
 
-//        mlp_out = aggregate_inputs[5]; // TODO don't use just one expert
-    mlp_out = ff.aggregate(aggregate_inputs,
+        mlp_out = aggregate_inputs[5]; // TODO don't use just one expert
+//    mlp_out = ff.aggregate(aggregate_inputs,
 //                           topk_values->dims[2],
 //                           mixtral_config.num_local_experts, // TODO don't use just one expert
-                           1,
-                           0.0f,
-                           std::string("layers." + std::to_string(i) +
-                                       ".block_sparse_moe_experts_aggregate")
-                               .c_str());
+//                           1,
+//                           0.0f,
+//                           std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_aggregate").c_str());
 
   // mlp_out has dimensions (hidden_size, 1, 128)
   printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
