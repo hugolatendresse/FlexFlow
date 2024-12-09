@@ -271,12 +271,13 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     // grouped_tokens[0] has dims (1024, 1, 0)
 
-
-    Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
+// TODO all experts
+//    Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
+    Tensor aggregate_inputs[4 + 1] = {nullptr};
     Tensor one_aggregate_inputs[1] = {nullptr};
 
     // TODO don't use only one expert
-  //    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
+//      for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
     for (int expert_idx = 1; expert_idx < 2; expert_idx++) {
 	Tensor w1 = ff.dense(
         			   ff_norm,
@@ -321,7 +322,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        0.0f,
                        std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w2").c_str());
-    aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
+    aggregate_inputs[4 + expert_idx-1] = w2; // (1024, 1, 0), 3 dims confirmed
     }
 
     // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
@@ -356,7 +357,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //        mlp_out = aggregate_inputs[5]; // TODO don't use just one expert
     mlp_out = ff.aggregate(aggregate_inputs,
 //                           topk_values->dims[2],
-                           mixtral_config.num_local_experts,
+//                           mixtral_config.num_local_experts, // TODO don't use just one expert
+                           1,
                            0.0f,
                            std::string("layers." + std::to_string(i) +
                                        ".block_sparse_moe_experts_aggregate")
