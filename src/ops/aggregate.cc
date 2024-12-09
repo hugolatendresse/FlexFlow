@@ -197,6 +197,10 @@ Node Aggregate::deserialize(FFModel &ff,
   dez.deserialize(name_len);
   dez.deserialize(name, name_len);
   assert(num_inputs == n + 4);
+  size_t id, transformer_layer_id, deserialized_model_id;
+  dez.deserialize(id);
+  dez.deserialize(transformer_layer_id);
+  dez.deserialize(deserialized_model_id);
   LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
   AggregateParams params;
   params.layer_guid = layer_guid;
