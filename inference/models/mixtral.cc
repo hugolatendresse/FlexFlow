@@ -280,10 +280,10 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor one_aggregate_inputs[1] = {nullptr};
 
     // TODO don't use only one expert
-//      for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
-    for (int expert_idx = 1; expert_idx < 2; expert_idx++) {
+    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
+//    for (int expert_idx = 1; expert_idx < 2; expert_idx++) {
 	Tensor w1 = ff.dense(
-        			   ff_norm,
+        			   ff_norm, // TODO use grouped tokens
                        mixtral_config.intermediate_size,
                        AC_MODE_NONE,
                        false,
@@ -325,7 +325,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                        0.0f,
                        std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w2").c_str());
-    aggregate_inputs[4 + expert_idx-1] = w2; // (1024, 1, 0), 3 dims confirmed
+    aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
     }
 
     // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
