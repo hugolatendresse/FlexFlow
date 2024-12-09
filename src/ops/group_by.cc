@@ -162,7 +162,7 @@ Group_by::Group_by(FFModel &model,
                    Group_by const &other,
                    const ParallelTensor input,
                    const ParallelTensor assign)
-    : Group_by(model, other.layer_guid, assign, other.n, other.alpha, other.name) {}
+    : Group_by(model, other.layer_guid, input, assign, other.n, other.alpha, other.name) {}
 
 Group_by::Group_by(FFModel &model,
                    Group_byParams const &params,
@@ -718,6 +718,9 @@ namespace std {
 size_t hash<FlexFlow::Group_byParams>::operator()(
     FlexFlow::Group_byParams const &params) const {
   size_t key = 0;
+  hash_combine(key, params.layer_guid.id);
+  hash_combine(key, params.layer_guid.transformer_layer_id);
+  hash_combine(key, params.layer_guid.model_id);
   hash_combine(key, params.n);
   hash_combine(key, params.alpha);
   return key;
