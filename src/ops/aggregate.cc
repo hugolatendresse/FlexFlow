@@ -187,6 +187,11 @@ Node Aggregate::deserialize(FFModel &ff,
                             Legion::Deserializer &dez,
                             std::vector<ParallelTensor> const &inputs,
                             int num_inputs) {
+  size_t id, transformer_layer_id, deserialized_model_id;
+  dez.deserialize(id);
+  dez.deserialize(transformer_layer_id);
+  dez.deserialize(deserialized_model_id);
+  LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
   int n;
   float lambda_bal;
   dez.deserialize(n);
@@ -196,11 +201,7 @@ Node Aggregate::deserialize(FFModel &ff,
   dez.deserialize(name_len);
   dez.deserialize(name, name_len);
   assert(num_inputs == n + 4);
-  size_t id, transformer_layer_id, deserialized_model_id;
-  dez.deserialize(id);
-  dez.deserialize(transformer_layer_id);
-  dez.deserialize(deserialized_model_id);
-  LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
+  
   AggregateParams params;
   params.layer_guid = layer_guid;
   params.n = n;
@@ -594,13 +595,13 @@ void Aggregate::backward_task(Task const *task,
 }
 
 void Aggregate::serialize(Legion::Serializer &sez) const {
+  sez.serialize(this->layer_guid.id);
+  sez.serialize(this->layer_guid.transformer_layer_id);
+  sez.serialize(this->layer_guid.model_id);
   sez.serialize(this->n);
   sez.serialize(this->lambda_bal);
   sez.serialize(strlen(this->name));
   sez.serialize(this->name, strlen(this->name));
-  sez.serialize(this->layer_guid.id);
-  sez.serialize(this->layer_guid.transformer_layer_id);
-  sez.serialize(this->layer_guid.model_id);
 }
 
 bool Aggregate::measure_operator_cost(Simulator *sim,
