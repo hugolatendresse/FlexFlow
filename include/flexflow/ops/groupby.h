@@ -27,11 +27,13 @@ public:
            const ParallelTensor _assign,
            int _n,
            float _alpha,
-           char const *name);
+           char const *name,
+           LayerID const &_layer_guid);
   Group_by(FFModel &model,
            Group_by const &other,
            const ParallelTensor input,
-           const ParallelTensor assign);
+           const ParallelTensor assign,
+           LayerID const &_layer_guid);
   Group_by(FFModel &model,
            Params const &params,
            Input const &inputs,

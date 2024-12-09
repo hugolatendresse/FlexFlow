@@ -94,7 +94,7 @@ Op *Group_by::create_operator_from_layer(
   float value2;
   layer->get_float_property("alpha", value2);
   float alpha = value2;
-  return new Group_by(model, inputs[0], inputs[1], n, alpha, layer->name);
+  return new Group_by(model, inputs[0], inputs[1], n, alpha, layer->name, layer->layer_guid);
 }
 
 Group_byParams Group_by::get_params() const {
@@ -123,7 +123,7 @@ Group_by::Group_by(FFModel &model,
                    const ParallelTensor _assign,
                    int _n,
                    float _alpha,
-                   char const *name)
+                   char const *name, LayerID const &_layer_guid)
     : Op(model,
          OP_GROUP_BY,
          _input->data_type,
@@ -137,7 +137,7 @@ Group_by::Group_by(FFModel &model,
   assert(_input->dims[1] == _assign->dims[1]);
   assert(n > 0);
   assert(inputs[0] != nullptr);
-
+  layer_guid = _layer_guid;
   int k = _assign->dims[0].size;
   int num_dims = _input->num_dims;
 
@@ -160,8 +160,8 @@ Group_by::Group_by(FFModel &model,
 Group_by::Group_by(FFModel &model,
                    Group_by const &other,
                    const ParallelTensor input,
-                   const ParallelTensor assign)
-    : Group_by(model, input, assign, other.n, other.alpha, other.name) {}
+                   const ParallelTensor assign, LayerID const &_layer_guid)
+    : Group_by(model, input, assign, other.n, other.alpha, other.name, _layer_guid) {}
 
 Group_by::Group_by(FFModel &model,
                    Group_byParams const &params,
@@ -172,7 +172,7 @@ Group_by::Group_by(FFModel &model,
                inputs.second,
                params.n,
                params.alpha,
-               params.name) {}
+               params.name, params.layer_guid) {}
 
 void Group_by::init_inference(FFModel const &ff,
                               std::vector<ParallelTensor> const &batch_inputs,
