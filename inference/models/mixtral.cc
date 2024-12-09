@@ -332,7 +332,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     }
 
        Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
-    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
+//    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
     Tensor dummy_gate = ff.dense(
         ff_norm,
         mixtral_config.num_local_experts,
