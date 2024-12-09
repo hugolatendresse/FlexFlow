@@ -271,7 +271,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
           mixtral_config.num_local_experts,
           0.0f,
           std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby").c_str());
-    }
+
     // grouped_tokens[0] has dims (1024, 1, 0)
 
 // TODO all experts
