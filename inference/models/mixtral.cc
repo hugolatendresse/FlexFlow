@@ -363,7 +363,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //                               .c_str());
 
 
-    Tensor wdummy2 = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
+    Tensor wdummy2 = ff.dense(grouped_tokens[1],  // (hidden_size, 1, result of calc in groupby)
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
                            false,
