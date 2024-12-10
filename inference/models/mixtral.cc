@@ -375,7 +375,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                            0.0f,
                            std::string("layers." + std::to_string(i) +
                                        ".block_sparse_new2_moe_experts_" +
-                                       std::to_string(expert_idx) + "_w1")
+                                       std::to_string(1) + "_w1")
                                .c_str());
 
   }
