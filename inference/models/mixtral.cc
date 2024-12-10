@@ -69,7 +69,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
   Tensor mlp_out = nullptr;
 
-  for (int i = 0; i < 1; i++) {
+  for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
     dbg_printf("mixtral hidden layer %d\n", i);
 
     // set transformer layer id
@@ -290,65 +290,62 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     // topk_values = ff.divide(topk_values, topk_values_reduced, false, std::string("layers." + std::to_string(i) +
     //                                    ".divide_topk")
     //                            .c_str()); // (2, 1, 128)
+
+    aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
+    aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
+    aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
+    aggregate_inputs[3] = gate;  // TODO this is a tmp fix
+//    aggregate_inputs[2] = aggregate_inputs[3] = nullptr;
+    // printf("aggregate_inputs [0] dims: %d", aggregate_inputs[0]->num_dims);
+
+    mlp_out = ff.aggregate(aggregate_inputs,
+                           mixtral_config.num_local_experts,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_aggregate")
+                               .c_str());
   }
 
-    Tensor output = ff.argmax(aggregate_inputs[0], false);
+  // final normalization and linear
+  Tensor final_rms_norm_output[2] = {nullptr, nullptr};
+  ff.residual_rms_norm(token,
+                       mlp_out,
+                       final_rms_norm_output,
+                       mixtral_config.rms_norm_eps,
+                       mixtral_config.hidden_size,
+                       false,
+                       DT_NONE,
+                       "norm");
 
-//     aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
-//     aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
-//     aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
-//     aggregate_inputs[3] = gate;  // TODO this is a tmp fix
-// //    aggregate_inputs[2] = aggregate_inputs[3] = nullptr;
-//     // printf("aggregate_inputs [0] dims: %d", aggregate_inputs[0]->num_dims);
+  Tensor dense = ff.dense(final_rms_norm_output[1],
+                          mixtral_config.vocab_size,
+                          AC_MODE_NONE,
+                          false,
+                          DT_NONE,
+                          nullptr,
+                          nullptr,
+                          nullptr,
+                          REG_MODE_NONE,
+                          0.0f,
+                          "lm_head");
 
-//     mlp_out = ff.aggregate(aggregate_inputs,
-//                            mixtral_config.num_local_experts,
-//                            0.0f,
-//                            std::string("layers." + std::to_string(i) +
-//                                        ".block_sparse_moe_experts_aggregate")
-//                                .c_str());
-//   }
-
-//   // final normalization and linear
-//   Tensor final_rms_norm_output[2] = {nullptr, nullptr};
-//   ff.residual_rms_norm(token,
-//                        mlp_out,
-//                        final_rms_norm_output,
-//                        mixtral_config.rms_norm_eps,
-//                        mixtral_config.hidden_size,
-//                        false,
-//                        DT_NONE,
-//                        "norm");
-
-//   Tensor dense = ff.dense(final_rms_norm_output[1],
-//                           mixtral_config.vocab_size,
-//                           AC_MODE_NONE,
-//                           false,
-//                           DT_NONE,
-//                           nullptr,
-//                           nullptr,
-//                           nullptr,
-//                           REG_MODE_NONE,
-//                           0.0f,
-//                           "lm_head");
-
-//   Tensor output;
-//   if (mode == BEAM_SEARCH_MODE) {
-//     Tensor softmax = ff.softmax(dense, -1);
-//     // output = ff.beam_top_k(softmax, mixtral_config.max_beam_width, false);
-//     // output = ff.argmax(softmax, /*beam_Search*/ true);
-//     output = ff.arg_top_k(softmax, mixtral_config.max_beam_width, false, true);
-//     // output = ff.top_k(softmax, )
-//   } else {
-//     // Tensor softmax = ff.softmax(dense, -1);
-//     if (generation_config.do_sample) {
-//       dense = ff.scalar_truediv(dense, generation_config.temperature, false);
-//       Tensor softmax = ff.softmax(dense, -1);
-//       output = ff.sampling(softmax, generation_config.topp);
-//     } else {
-//       // output = ff.arg_top_k(dense, /*k=*/1, false);
-//       output = ff.argmax(dense, /*beam_Search*/ false);
-//     }
+  Tensor output;
+  if (mode == BEAM_SEARCH_MODE) {
+    Tensor softmax = ff.softmax(dense, -1);
+    // output = ff.beam_top_k(softmax, mixtral_config.max_beam_width, false);
+    // output = ff.argmax(softmax, /*beam_Search*/ true);
+    output = ff.arg_top_k(softmax, mixtral_config.max_beam_width, false, true);
+    // output = ff.top_k(softmax, )
+  } else {
+    // Tensor softmax = ff.softmax(dense, -1);
+    if (generation_config.do_sample) {
+      dense = ff.scalar_truediv(dense, generation_config.temperature, false);
+      Tensor softmax = ff.softmax(dense, -1);
+      output = ff.sampling(softmax, generation_config.topp);
+    } else {
+      // output = ff.arg_top_k(dense, /*k=*/1, false);
+      output = ff.argmax(dense, /*beam_Search*/ false);
+    }
   }
 
   FileDataLoader *fileloader = new FileDataLoader(
