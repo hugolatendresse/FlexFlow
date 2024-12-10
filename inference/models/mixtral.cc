@@ -258,22 +258,38 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
 //            .c_str());
 
-    // using this to create a grouped_tokens use no where just to see if group_by can run successfully
-    Tensor grouped_tokens2[mixtral_config.num_local_experts] = {nullptr};
-    ff.group_by(
-        ff_norm, // (hidden_size, 1, 128)
-        topk_indices,
-        grouped_tokens2,
-        mixtral_config.num_local_experts,
-        1.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
-        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
-            .c_str());
+    // TODO fix group_by Legion error using below
+    // Can use this to create a grouped_tokens2 used no where just to see if group_by can run successfully
+//    Tensor grouped_tokens2[mixtral_config.num_local_experts] = {nullptr};
+//    ff.group_by(
+//        ff_norm, // (hidden_size, 1, 128)
+//        topk_indices,
+//        grouped_tokens2,
+//        mixtral_config.num_local_experts,
+//        1.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
+//        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
+//            .c_str());
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
          expert_idx++) {
       grouped_tokens[expert_idx] = ff_norm; // TODO this is a dirty fix. Restore using group_by!
       Tensor w1 = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
+                           mixtral_config.intermediate_size,
+                           AC_MODE_NONE,
+                           false,
+                           DT_NONE,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           REG_MODE_NONE,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_" +
+                                       std::to_string(expert_idx) + "_w1")
+                               .c_str());
+
+            Tensor wdummy = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
                            false,
@@ -345,6 +361,22 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //                           std::string("layers." + std::to_string(i) +
 //                                       ".block_sparse_moe_experts_aggregate")
 //                               .c_str());
+
+    Tensor wdummy2 = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
+                           mixtral_config.intermediate_size,
+                           AC_MODE_NONE,
+                           false,
+                           DT_NONE,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           REG_MODE_NONE,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_" +
+                                       std::to_string(expert_idx) + "_w1")
+                               .c_str());
+
   }
   // final normalization and linear
   Tensor final_rms_norm_output[2] = {nullptr, nullptr};
