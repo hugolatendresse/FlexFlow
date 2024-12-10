@@ -249,7 +249,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor topk_indices = topk_out[1];  // (experts_per_tok, 1, 128) (confirmed 3 dims)
 
     Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
-    ff.group_by(
+    ff.group_by( // TODO this group_by does not crash, but it sets all tokens to 0 or something! Need to figure out why it make outptu tokens all the same
         ff_norm, // (hidden_size, 1, 128)
         topk_indices,
         grouped_tokens,
@@ -258,7 +258,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
             .c_str());
 
-    // TODO fix group_by Legion error using below
     // Can use this to create a grouped_tokens2 used no where just to see if group_by can run successfully
 //    Tensor grouped_tokens2[mixtral_config.num_local_experts] = {nullptr};
 //    ff.group_by(
