@@ -298,7 +298,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[3] = gate;  // TODO this is a tmp fix
 //    aggregate_inputs[2] = aggregate_inputs[3] = nullptr;
     // printf("aggregate_inputs [0] dims: %d", aggregate_inputs[0]->num_dims);
-    mlp_out = aggregate_inputs[5];
+    mlp_out = aggregate_inputs[6];
     // mlp_out = ff.aggregate(aggregate_inputs,
     //                        mixtral_config.num_local_experts,
     //                        0.0f,
