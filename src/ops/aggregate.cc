@@ -366,7 +366,7 @@ void Aggregate::forward_task(Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) {
-
+  assert(false && "Aggregate::forward_task not implemented");
   assert(regions.size() == task->regions.size());
   int n = regions.size() - 3;
 
@@ -433,6 +433,7 @@ void Aggregate::inference_task(Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) {
+  assert(false && "Aggregate::inference_task not implemented");
 
   assert(regions.size() == task->regions.size());
   int n = regions.size() - 3;
