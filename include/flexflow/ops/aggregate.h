@@ -65,6 +65,10 @@ public:
                            std::vector<Legion::PhysicalRegion> const &regions,
                            Legion::Context ctx,
                            Legion::Runtime *runtime);
+  static void inference_task(Legion::Task const *task,
+                           std::vector<Legion::PhysicalRegion> const &regions,
+                           Legion::Context ctx,
+                           Legion::Runtime *runtime);
   static void forward_kernel_wrapper(AggregateMeta const *m,
                                      float **exp_preds,
                                      int const *acc_gate_assign_ptr,
@@ -75,6 +79,16 @@ public:
                                      int rows,
                                      int const batch_size,
                                      int out_dim);
+  static void inference_kernel_wrapper(AggregateMeta const *m, // TODO never actually defined, I think
+                                   float **exp_preds,
+                                   int const *acc_gate_assign_ptr,
+                                   float const *acc_gate_pred_ptr,
+                                   float *acc_output_ptr,
+                                   int n,
+                                   int const k,
+                                   int rows,
+                                   int const batch_size,
+                                   int out_dim);
   static void backward_task(Legion::Task const *task,
                             std::vector<Legion::PhysicalRegion> const &regions,
                             Legion::Context ctx,
