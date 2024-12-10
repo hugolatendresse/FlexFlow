@@ -495,7 +495,7 @@ FutureMap SigmoidSiluMulti::inference(
 void SigmoidSiluMulti::inference_task(
     Task const *task,
     std::vector<PhysicalRegion> const &regions,
-    Context ctx,f
+    Context ctx,
     Runtime *runtime) {
 
   assert(task->regions.size() == regions.size());
