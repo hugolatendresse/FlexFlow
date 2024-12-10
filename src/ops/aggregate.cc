@@ -452,7 +452,7 @@ void Aggregate::forward_task(Task const *task,
 
   int total_input_cnt = 10; // TODO remove magic number
   GenericTensorAccessorR inputs[total_input_cnt];
-  // 10 input types are defined
+  // 10 input types are defined, 10 regions are defined
   for (int i = 0; i < total_input_cnt; i++) {
       inputs[i] = helperGetGenericTensorAccessorRO(
           m->input_type[i], regions[i], task->regions[i], FID_DATA, ctx, runtime);
@@ -644,8 +644,7 @@ void Aggregate::backward(FFModel const &ff) {
   }
   // exp_preds gradients
   for (int i = 0; i < n; i++) {
-    launcher.add_region_requirement(
-        RegionRequirement(inputs[i + 4]->part_grad,
+    launcher.add_region_requirement(RegionRequirement(inputs[i + 4]->part_grad,
                           0 /*projection id*/,
                           READ_WRITE,
                           EXCLUSIVE,
