@@ -69,7 +69,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
   Tensor mlp_out = nullptr;
 
-  for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
+  for (int i = 0; i < 1; i++) {
     dbg_printf("mixtral hidden layer %d\n", i);
 
     // set transformer layer id
@@ -298,13 +298,13 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[3] = gate;  // TODO this is a tmp fix
 //    aggregate_inputs[2] = aggregate_inputs[3] = nullptr;
     // printf("aggregate_inputs [0] dims: %d", aggregate_inputs[0]->num_dims);
-
-    mlp_out = ff.aggregate(aggregate_inputs,
-                           mixtral_config.num_local_experts,
-                           0.0f,
-                           std::string("layers." + std::to_string(i) +
-                                       ".block_sparse_moe_experts_aggregate")
-                               .c_str());
+    mlp_out = aggregate_inputs[5];
+    // mlp_out = ff.aggregate(aggregate_inputs,
+    //                        mixtral_config.num_local_experts,
+    //                        0.0f,
+    //                        std::string("layers." + std::to_string(i) +
+    //                                    ".block_sparse_moe_experts_aggregate")
+    //                            .c_str());
   }
 
   // final normalization and linear
