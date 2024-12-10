@@ -27,6 +27,9 @@ using Legion::coord_t;
 using Legion::Domain;
 using Legion::FutureMap;
 using Legion::IndexLauncher;
+using Legion::InlineLauncher; // TODO used in silu, but never called, try deleting
+using Legion::Machine;
+using Legion::Memory;
 using Legion::PhysicalRegion;
 using Legion::Predicate;
 using Legion::Rect;
@@ -35,7 +38,7 @@ using Legion::Runtime;
 using Legion::Task;
 using Legion::TaskArgument;
 using Legion::TaskLauncher;
-using PCG::Node;
+using PCG::Node; // TODO not used in silu, not sure what this does
 
 Tensor FFModel::aggregate(
     Tensor const *inputs, /* gate_preds, gate_assign, gate assign TopK,
