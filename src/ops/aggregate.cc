@@ -375,9 +375,9 @@ void Aggregate::forward_task(Task const *task,
 
   // TODO One of those three linese cause the mismatch error
   // get gate_pred, gate_assign, output
-  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
+//  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
 //  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
-//  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA);
+  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA);
 
 //  Rect<3> rect_gate_pred = runtime->get_index_space_domain(
 //      ctx, task->regions[0].region.get_index_space());
