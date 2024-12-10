@@ -49,6 +49,10 @@ public:
                               std::vector<ParallelTensor> const &,
                               std::vector<ParallelTensor> const &,
                               MachineView const *mv = nullptr) override;
+  void inference_task(Task const *task,
+                             std::vector<PhysicalRegion> const &regions,
+                             Context ctx,
+                             Runtime *runtime) override;
   void backward(FFModel const &) override;
   void print_layer(FFModel const &model) override {
     assert(0);
