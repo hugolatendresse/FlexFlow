@@ -50,7 +50,7 @@ public:
                               std::vector<ParallelTensor> const &,
                               MachineView const *mv = nullptr) override;
   static void inference_task(Legion::Task const *task,
-                             std::vector<PhysicalRegion> const &regions,
+                             std::vector<Legion::PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) override;
   void backward(FFModel const &) override;
