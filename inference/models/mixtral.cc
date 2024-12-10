@@ -290,6 +290,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     // topk_values = ff.divide(topk_values, topk_values_reduced, false, std::string("layers." + std::to_string(i) +
     //                                    ".divide_topk")
     //                            .c_str()); // (2, 1, 128)
+  }
 
     Tensor output = aggregate_inputs[0];
 
