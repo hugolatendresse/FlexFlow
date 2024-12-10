@@ -424,10 +424,10 @@ void Aggregate::inference_task(Task const *task,
   int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
   Aggregate::forward_kernel_wrapper(m,
-                                    exp_preds,
-                                    static_cast<int32_t const *>(acc_gate_assign.ptr(rect_gate_assign)), //MK: I feel like these need to be typed?
-                                    static_cast<float const *>(acc_gate_pred.ptr(rect_gate_pred)),
-                                    static_cast<float *>(acc_output.ptr(rect_output)),
+                                    exp_preds, // MK Added these static casts.. maybe they'll work?
+                                    acc_gate_assign.ptr(rect_gate_assign), //MK: I feel like these need to be typed?
+                                    acc_gate_pred.ptr(rect_gate_pred), 
+                                    acc_output.ptr(rect_output),
                                     n,
                                     k,
                                     rows,
