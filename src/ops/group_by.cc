@@ -423,11 +423,11 @@ FutureMap Group_by::inference(FFModel const &ff,
   launcher.add_field(0, FID_DATA);
 
   // assign
-  launcher.add_region_requirement(RegionRequirement(batch_outputs[1]->part,
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[1]->part,
                                                     0 /*projection id*/,
                                                     READ_ONLY,
                                                     EXCLUSIVE,
-                                                    batch_outputs[1]->region));
+                                                    batch_inputs[1]->region));
   launcher.add_field(1, FID_DATA);
 
   // output
