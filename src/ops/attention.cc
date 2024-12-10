@@ -370,6 +370,7 @@ void MultiHeadAttention::init_inference(
     std::vector<ParallelTensor> const &batch_inputs,
     std::vector<ParallelTensor> const &batch_outputs,
     MachineView const *mv) {
+  printf("running MultiHeadAttention::init_inference\n");
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = batch_outputs[0]->parallel_is;
   ArgumentMap argmap;
@@ -422,6 +423,7 @@ void MultiHeadAttention::init_inference(
 }
 
 void MultiHeadAttention::init(FFModel const &ff) {
+  printf("running MultiHeadAttention::init\n");
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = outputs[0]->parallel_is;
   ArgumentMap argmap;
@@ -483,6 +485,7 @@ OpMeta *
                                   std::vector<PhysicalRegion> const &regions,
                                   Context ctx,
                                   Runtime *runtime) {
+  printf("running MultiHeadAttention::init_task\n");
   MultiHeadAttention const *attn = (MultiHeadAttention *)task->args;
   FFHandler handle = *((FFHandler const *)task->local_args);
   TensorAccessorR<float, 4> acc_query(
@@ -526,6 +529,7 @@ OpMeta *
 }
 
 void MultiHeadAttention::forward(FFModel const &ff) {
+  printf("running MultiHeadAttention::forward\n");
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -578,6 +582,7 @@ FutureMap MultiHeadAttention::inference(
     std::vector<ParallelTensor> const &batch_inputs,
     std::vector<ParallelTensor> const &batch_outputs,
     MachineView const *mv) {
+  printf("running MultiHeadAttention::inference\n");
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -642,6 +647,7 @@ void MultiHeadAttention::forward_task(
     std::vector<PhysicalRegion> const &regions,
     Context ctx,
     Runtime *runtime) {
+  printf("running MultiHeadAttention::forward_task\n");
   assert(regions.size() == 5);
   assert(task->regions.size() == regions.size());
   // const MultiHeadAttention* attn = (MultiHeadAttention*) task->args;

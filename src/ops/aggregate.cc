@@ -205,6 +205,7 @@ void Aggregate::init_inference(FFModel const &ff,
                                std::vector<ParallelTensor> const &batch_inputs,
                                std::vector<ParallelTensor> const &batch_outputs,
                                MachineView const *mv) {
+  printf("running Aggregate::init_inference\n");
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = batch_outputs[0]->parallel_is;
   ArgumentMap argmap;
@@ -227,6 +228,7 @@ void Aggregate::init_inference(FFModel const &ff,
 }
 
 void Aggregate::init(FFModel const &ff) {
+  printf("running Aggregate::init\n");
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = outputs[0]->parallel_is;
   ArgumentMap argmap;
@@ -250,6 +252,7 @@ OpMeta *Aggregate::init_task(Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) {
+  printf("running Aggregate::init_task\n");
   Aggregate *agg = (Aggregate *)task->args;
   FFHandler handle = *((FFHandler *)task->local_args);
   AggregateMeta *m = new AggregateMeta(handle, agg);
@@ -261,6 +264,7 @@ OpMeta *Aggregate::init_task(Task const *task,
 }
 
 void Aggregate::forward(FFModel const &ff) {
+  printf("running Aggregate::forward\n");
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -311,6 +315,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
                                std::vector<ParallelTensor> const &batch_inputs,
                                std::vector<ParallelTensor> const &batch_outputs,
                                MachineView const *mv) {
+  printf("running Aggregate::inference\n");
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -367,7 +372,8 @@ void Aggregate::forward_task(Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) {
-  // printf("runnign empty Aggregate::forward_task\n");
+  printf("running Aggregate::forward_task\n");
+
   assert(regions.size() == task->regions.size());
   int n = regions.size() - 3;
 
@@ -375,9 +381,9 @@ void Aggregate::forward_task(Task const *task,
 
   // TODO One of those three linese cause the mismatch error
   // get gate_pred, gate_assign, output
-//  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
+//  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA); // This one alone does cause the problem
 //  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
-  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA);
+//  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA); // This one alone also causes the problem
 
 //  Rect<3> rect_gate_pred = runtime->get_index_space_domain(
 //      ctx, task->regions[0].region.get_index_space());
