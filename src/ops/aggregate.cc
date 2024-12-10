@@ -318,9 +318,9 @@ FutureMap Aggregate::inference(FFModel const &ff,
   MachineView const *view = mv ? mv : &batch_outputs[0]->machine_view;
   set_argumentmap_for_inference(ff, argmap, batch_outputs[0]);
   size_t machine_view_hash = view->hash();
-  /* std::cout << "Aggregate op machine_view: " << *(MachineView const *)mv
-            << std::endl; */
-  IndexLauncher launcher(AGGREGATE_FWD_TASK_ID,
+  std::cout << "Aggregate op machine_view: " << *(MachineView const *)mv
+            << std::endl;
+  IndexLauncher launcher(AGGREGATE_FWD_TASK_ID, // TODO should we have a separate inference task?
                          parallel_is,
                          TaskArgument(nullptr, 0),
                          argmap,
