@@ -240,6 +240,21 @@ void Aggregate::init_inference(FFModel const &ff,
                                                     EXCLUSIVE,
                                                     batch_inputs[1]->region));
   launcher.add_field(1, FID_DATA);
+
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[2]->part,
+                                                  0 /*projection id*/,
+                                                  READ_WRITE,
+                                                  EXCLUSIVE,
+                                                  batch_inputs[2]->region));
+  launcher.add_field(2, FID_DATA);
+
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[3]->part,
+                                                  0 /*projection id*/,
+                                                  READ_WRITE,
+                                                  EXCLUSIVE,
+                                                  batch_inputs[3]->region));
+  launcher.add_field(3, FID_DATA);
+
   // exp_preds
   for (int i = 0; i < n; i++) {
     launcher.add_region_requirement(RegionRequirement(batch_inputs[i + 4]->part,
@@ -247,7 +262,7 @@ void Aggregate::init_inference(FFModel const &ff,
                                     READ_WRITE,
                                     EXCLUSIVE,
                                     batch_inputs[i + 4]->region));
-    launcher.add_field(i + 2, FID_DATA);
+    launcher.add_field(i + 4, FID_DATA);
   }
   // output
   launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
@@ -255,7 +270,7 @@ void Aggregate::init_inference(FFModel const &ff,
                                                     WRITE_ONLY,
                                                     EXCLUSIVE,
                                                     batch_outputs[0]->region));
-  launcher.add_field(n + 2, FID_DATA);
+  launcher.add_field(n + 4, FID_DATA);
 
   FutureMap fm = runtime->execute_index_space(ctx, launcher);
   fm.wait_all_results();
@@ -437,6 +452,7 @@ void Aggregate::forward_task(Task const *task,
 
   int total_input_cnt = 10; // TODO remove magic number
   GenericTensorAccessorR inputs[total_input_cnt];
+  // 10 input types are defined
   for (int i = 0; i < total_input_cnt; i++) {
       inputs[i] = helperGetGenericTensorAccessorRO(
           m->input_type[i], regions[i], task->regions[i], FID_DATA, ctx, runtime);
