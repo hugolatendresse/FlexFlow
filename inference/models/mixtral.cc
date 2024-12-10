@@ -336,7 +336,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     aggregate_inputs[0] = topk_values;
     aggregate_inputs[1] = topk_indices;
-    aggregate_inputs[2] = topk_values;
+    aggregate_inputs[2] = topk_values; // TODO Causes Legion runtime error!!
     aggregate_inputs[3] = gate;
     mlp_out = aggregate_inputs[5]; // TODO don't use only one expert
 //    mlp_out = ff.aggregate(aggregate_inputs,

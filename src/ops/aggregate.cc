@@ -313,6 +313,7 @@ OpMeta *Aggregate::init_task(Task const *task,
   //  ... including some steps with GenericTensorAccessorR
   //  Shoud I include?
 
+  // Only needed to allocate memroy in the kernel
   AggregateMeta *m = new AggregateMeta(handle, agg, gpu_mem_allocator);
   for (int i = 0; i < 10; i++) { // TODO 10 is a magic number
     m->input_type[i] = agg->inputs[i]->data_type;
@@ -489,6 +490,18 @@ void Aggregate::forward_task(Task const *task,
       ctx, task->regions[total_input_cnt].region.get_index_space());
 
 
+  Aggregate::forward_kernel_wrapper(m,
+                                    bc,
+                                    exp_preds,
+                                    acc_gate_assign.ptr(rect_gate_assign),
+                                    acc_gate_pred.ptr(rect_gate_pred),
+                                    acc_output.ptr(rect_output),
+                                    n,
+                                    k,
+                                    rows,
+                                    batch_size,
+                                    out_dim);
+
   // TODO One of those three linese cause the mismatch error
   // get gate_pred, gate_assign, output
   //AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA); // This one alone does cause the problem
@@ -534,6 +547,7 @@ void Aggregate::forward_task(Task const *task,
 
 //  printf("CALLING FOWARD_KERNEL_WRAPPER IN FORWARD_TASK\n");
 
+  // From ZJ: we lose shape of tensors when we do this approach. Appraoch in sigmoid silu is recommended
 //  Aggregate::forward_kernel_wrapper(m,
 //                                    exp_preds,
 //                                    acc_gate_assign.ptr(rect_gate_assign),
@@ -604,6 +618,7 @@ void Aggregate::inference_task(Task const *task,
 
   // TODO should we have an inference_kernel wrapper?
   Aggregate::forward_kernel_wrapper(m,
+                                    bc,
                                     exp_preds,
                                     acc_gate_assign.ptr(rect_gate_assign),
                                     acc_gate_pred.ptr(rect_gate_pred),
