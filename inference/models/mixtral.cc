@@ -327,12 +327,12 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[2] = topk_values;
     aggregate_inputs[3] = gate;
     mlp_out = aggregate_inputs[5]; // TODO don't use only one expert
-//    mlp_out = ff.aggregate(aggregate_inputs,
-//                           mixtral_config.num_local_experts,
-//                           0.0f,
-//                           std::string("layers." + std::to_string(i) +
-//                                       ".block_sparse_moe_experts_aggregate")
-//                               .c_str());
+    mlp_out2 = ff.aggregate(aggregate_inputs,
+                           mixtral_config.num_local_experts,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_aggregate")
+                               .c_str());
   }
   // final normalization and linear
   Tensor final_rms_norm_output[2] = {nullptr, nullptr};
