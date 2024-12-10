@@ -383,7 +383,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
-
+  launcher.add_future(bc);
   // gate_preds
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
@@ -421,6 +421,7 @@ void Aggregate::forward_task(Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) {
+  // TODO in the end, create and place our changes in Aggregate::inference_task
 //  printf("running Aggregate::forward_task\n");
 
   assert(regions.size() == task->regions.size());
