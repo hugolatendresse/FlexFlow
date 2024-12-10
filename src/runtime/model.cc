@@ -5391,6 +5391,20 @@ void register_flexflow_internal_tasks(Runtime *runtime,
     }
   }
   {
+    TaskVariantRegistrar registrar(AGGREGATE_INF_TASK_ID, "Aggregate Inference");
+    registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
+    registrar.set_leaf();
+    if (pre_register) {
+      Runtime::preregister_task_variant<Aggregate::inference_task>(
+          registrar, "Aggregate Inference Task");
+    } else {
+      if (enable_control_replication) {
+        registrar.global_registration = false;
+      }
+      runtime->register_task_variant<Aggregate::inference_task>(registrar);
+    }
+  }
+  {
     TaskVariantRegistrar registrar(AGGREGATE_BWD_TASK_ID, "Aggregate Backward");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
