@@ -291,21 +291,20 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     //                                    ".divide_topk")
     //                            .c_str()); // (2, 1, 128)
 
+    Tensor topk_values_copy = topk_values;
     aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
     aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
-    aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
+    aggregate_inputs[2] = topk_values_copy; // TODO this is a tmp fix
     aggregate_inputs[3] = gate;  // TODO this is a tmp fix
 //    aggregate_inputs[2] = aggregate_inputs[3] = nullptr;
     // printf("aggregate_inputs [0] dims: %d", aggregate_inputs[0]->num_dims);
 
-    mlp_out = token;
-
-    // mlp_out = ff.aggregate(aggregate_inputs,
-    //                        mixtral_config.num_local_experts,
-    //                        0.0f,
-    //                        std::string("layers." + std::to_string(i) +
-    //                                    ".block_sparse_moe_experts_aggregate")
-    //                            .c_str());
+    mlp_out = ff.aggregate(aggregate_inputs,
+                           mixtral_config.num_local_experts,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_aggregate")
+                               .c_str());
   }
 
   // final normalization and linear
