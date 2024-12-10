@@ -65,7 +65,7 @@ void FFModel::group_by(const Tensor input,
     }
     // Batch dimension is replaced by max expert capacity
     if (alpha != 0.0f) { 
-      dims[num_dims - 1] = (int)ceil(alpha * k / n * input->dims[num_dims - 1]);
+      dims[num_dims - 1] = 128; //(int)ceil(alpha * k / n * input->dims[num_dims - 1]);
     }
     printf("DIMS %d", dims[num_dims - 1]);
     for (int i = 0; i < n; i++) {
@@ -148,7 +148,7 @@ Group_by::Group_by(FFModel &model,
     dims[i] = inputs[0]->dims[i];
   }
   // replace batch size with max expert size
-  dims[num_dims - 2].size = (int)ceil(alpha * k / n * inputs[0]->dims[1].size);
+  dims[num_dims - 2].size = 128;// (int)ceil(alpha * k / n * inputs[0]->dims[1].size);
 
   for (int i = 0; i < n; i++) {
     outputs[i] = model.create_parallel_tensor_legion_ordering(
