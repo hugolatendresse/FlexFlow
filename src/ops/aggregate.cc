@@ -331,7 +331,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
   size_t machine_view_hash = view->hash();
   /* std::cout << "Aggregate op machine_view: " << *(MachineView const *)mv
             << std::endl; */
-  IndexLauncher launcher(AGGREGATE_FWD_TASK_ID,
+  IndexLauncher launcher(AGGREGATE_INF_TASK_ID,
                          parallel_is,
                          TaskArgument(nullptr, 0),
                          argmap,
