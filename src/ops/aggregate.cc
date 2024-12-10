@@ -385,6 +385,7 @@ void Aggregate::forward_task(Task const *task,
   Rect<3> rect_output = runtime->get_index_space_domain(
       ctx, task->regions[n + 2].region.get_index_space());
 
+
 //  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
 //  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
 //  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
