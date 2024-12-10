@@ -413,6 +413,9 @@ void Aggregate::forward_task(Task const *task,
 
   int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
+
+  printf("CALLING FOWARD_KERNEL_WRAPPER IN FORWARD_TASK\n");
+
   Aggregate::forward_kernel_wrapper(m,
                                     exp_preds,
                                     acc_gate_assign.ptr(rect_gate_assign),
@@ -425,7 +428,7 @@ void Aggregate::forward_task(Task const *task,
                                     out_dim);
 }
 
-
+// TODO HL copied forward_task. Can we just do that?
 void Aggregate::inference_task(Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
@@ -477,6 +480,9 @@ void Aggregate::inference_task(Task const *task,
 
   int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
+  printf("CALLING FOWARD_KERNEL_WRAPPER IN INFERENCE_TASK\n");
+
+  // TODO should we have an inference_kernel wrapper?
   Aggregate::forward_kernel_wrapper(m,
                                     exp_preds,
                                     acc_gate_assign.ptr(rect_gate_assign),
