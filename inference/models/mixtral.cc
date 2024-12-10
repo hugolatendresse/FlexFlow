@@ -226,6 +226,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     // grouped_tokens[0] has dims (1024, 1, 0)
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
+      grouped_tokens[expert_idx] = ff_norm;
       Tensor w1 = ff.dense(grouped_tokens[expert_idx],
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
