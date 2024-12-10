@@ -286,10 +286,10 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     // printf("aggregate_inputs [4] dims: %d", aggregate_inputs[4]->num_dims);
 
     // mk: why do we need this post softmax?
-    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
-    topk_values = ff.add(topk_values, topk_values_reduced, false, std::string("layers." + std::to_string(i) +
-                                       ".divide_topk")
-                               .c_str()); // (2, 1, 128)
+    // Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
+    // topk_values = ff.divide(topk_values, topk_values_reduced, false, std::string("layers." + std::to_string(i) +
+    //                                    ".divide_topk")
+    //                            .c_str()); // (2, 1, 128)
 
     aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
     aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
