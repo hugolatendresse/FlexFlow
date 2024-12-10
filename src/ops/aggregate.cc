@@ -432,7 +432,8 @@ void Aggregate::inference_task(Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) {
-  assert(false && "Aggregate::inference_task not implemented");
+  // TODO inference_task is never called, need to register it
+  assert(false && "Aggregate::inference_task needed after all!");
 
   assert(regions.size() == task->regions.size());
   int n = regions.size() - 3;
