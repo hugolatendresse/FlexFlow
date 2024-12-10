@@ -208,7 +208,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor topk_values = topk_out[0]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
     Tensor topk_indices = topk_out[1]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
 
-    printf("TOPK VALUES DIM %d", topk_values->num_dims);
+    // printf("TOPK VALUES DIM %d", topk_values->num_dims);
 
     Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
     ff.group_by(
@@ -220,7 +220,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
             .c_str());
 
-    printf("GROUPED TOKENS 0 NUM DIMS %d", grouped_tokens[0]->num_dims);
+    // printf("GROUPED TOKENS 0 NUM DIMS %d", grouped_tokens[0]->num_dims);
 
     // grouped_tokens[0] has dims (1024, 1, 0)
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
@@ -282,7 +282,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
       aggregate_inputs[4 + expert_idx] = w2; // w2 has 3 dimensions
     }
-    printf("aggregate_inputs [4] dims: %d", aggregate_inputs[4]->num_dims);
+    // printf("aggregate_inputs [4] dims: %d", aggregate_inputs[4]->num_dims);
 
     // Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
     // topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
@@ -292,7 +292,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
     aggregate_inputs[3] = gate;  // TODO this is a tmp fix
 //    aggregate_inputs[2] = aggregate_inputs[3] = nullptr;
-    printf("aggregate_inputs [0] dims: %d", aggregate_inputs[0]->num_dims);
+    // printf("aggregate_inputs [0] dims: %d", aggregate_inputs[0]->num_dims);
 
     mlp_out = ff.aggregate(aggregate_inputs,
                            mixtral_config.num_local_experts,
