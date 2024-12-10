@@ -65,7 +65,7 @@ void FFModel::group_by(const Tensor input,
     }
     // Batch dimension is replaced by max expert capacity
     if (alpha != 0.0f) { 
-      dims[num_dims - 1] = (int)ceil(alpha * k / n * input->dims[num_dims - 1]);
+      dims[num_dims - 1] = 128;// (int)ceil(alpha * k / n * input->dims[num_dims - 1]);
     }
     printf("DIMS %d", dims[num_dims - 1]);
     for (int i = 0; i < n; i++) {
