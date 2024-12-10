@@ -432,6 +432,7 @@ void Aggregate::forward_task(Task const *task,
 
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 
+
   // TODO One of those three linese cause the mismatch error
   // get gate_pred, gate_assign, output
   //AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA); // This one alone does cause the problem
@@ -750,6 +751,8 @@ bool Aggregate::measure_operator_cost(Simulator *sim,
   if (!outputs[0]->get_sub_tensor(mv, sub_output)) {
     return false;
   }
+
+  return false;
 
   // TODO uncomment below, but will need to somehow define a task, or find a way
   //  to avoid gpu_mem_allocator
