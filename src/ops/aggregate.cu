@@ -307,13 +307,16 @@ void Aggregate::backward_kernel_wrapper(AggregateMeta const *m,
   }
 }
 
-AggregateMeta::AggregateMeta(FFHandler handler, Aggregate const *aggr)
+AggregateMeta::AggregateMeta(FFHandler handler,
+                             Aggregate const *aggr,
+                             MemoryAllocator &gpu_mem_allocator)
     : OpMeta(handler, aggr) {
   checkCUDA(cudaMalloc(&dev_exp_preds, aggr->n * sizeof(float *)));
   checkCUDA(cudaMalloc(&dev_exp_grads, aggr->n * sizeof(float *)));
-  profiling = ssm->profiling;
-  inference_debugging = ssm->inference_debugging;
+  profiling = aggr->profiling;
+  inference_debugging = aggr->inference_debugging;
 }
+
 AggregateMeta::~AggregateMeta(void) {
   checkCUDA(cudaFree(&dev_exp_preds));
   checkCUDA(cudaFree(&dev_exp_grads));
