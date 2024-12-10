@@ -291,7 +291,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     //                                    ".divide_topk")
     //                            .c_str()); // (2, 1, 128)
 
-    Tensor output = aggregate_inputs;
+    Tensor output = aggregate_inputs[0];
 
 //     aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
 //     aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
