@@ -78,7 +78,8 @@ Tensor FFModel::dense(const Tensor input,
       dims[i] = input->dims[i];
     }
     dims[0] = outDim;
-    std::cout << "Dense " << name << " Creating output tensor with dims[2] = " << dims[0] << std::endl;
+//    std::cout << "Dense " << name << " Creating output tensor with dims[2] = " << dims[0] << std::endl;
+    // dims[2] is always 1024
     li->outputs[0] = create_tensor_legion_ordering(
         numdims, dims, data_type, li, 0, true /*create_grad*/);
   }
@@ -280,6 +281,7 @@ Linear::Linear(FFModel &model,
   }
 
   // Create the output tensor
+  std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[2] = " << output_shape.dims[0].size << std::endl;
   outputs[0] = model.create_parallel_tensor_legion_ordering(
       output_shape.num_dims, output_shape.dims, _data_type, this);
 
