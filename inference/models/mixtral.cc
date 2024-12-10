@@ -289,21 +289,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                                        std::to_string(expert_idx) + "_w1")
                                .c_str());
 
-            Tensor wdummy = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
-                           mixtral_config.intermediate_size,
-                           AC_MODE_NONE,
-                           false,
-                           DT_NONE,
-                           nullptr,
-                           nullptr,
-                           nullptr,
-                           REG_MODE_NONE,
-                           0.0f,
-                           std::string("layers." + std::to_string(i) +
-                                       ".block_sparse_moe_experts_" +
-                                       std::to_string(expert_idx) + "_w1")
-                               .c_str());
-
       Tensor w3 = ff.dense(grouped_tokens[expert_idx],
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
@@ -361,22 +346,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //                           std::string("layers." + std::to_string(i) +
 //                                       ".block_sparse_moe_experts_aggregate")
 //                               .c_str());
-
-
-    Tensor wdummy2 = ff.dense(grouped_tokens[1],  // (hidden_size, 1, result of calc in groupby)
-                           mixtral_config.intermediate_size,
-                           AC_MODE_NONE,
-                           false,
-                           DT_NONE,
-                           nullptr,
-                           nullptr,
-                           nullptr,
-                           REG_MODE_NONE,
-                           0.0f,
-                           std::string("layers." + std::to_string(i) +
-                                       ".block_sparse_moe_experts_" +
-                                       std::to_string(1) + "_w1")
-                               .c_str());
 
   }
   // final normalization and linear
