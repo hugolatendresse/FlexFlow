@@ -260,15 +260,16 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     // TODO fix group_by Legion error using below
     // Can use this to create a grouped_tokens2 used no where just to see if group_by can run successfully
-    Tensor grouped_tokens2[mixtral_config.num_local_experts] = {nullptr};
-    ff.group_by(
-        ff_norm, // (hidden_size, 1, 128)
-        topk_indices,
-        grouped_tokens2,
-        mixtral_config.num_local_experts,
-        1.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
-        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
-            .c_str());
+//    Tensor grouped_tokens2[mixtral_config.num_local_experts] = {nullptr};
+//    ff.group_by(
+//        ff_norm, // (hidden_size, 1, 128)
+//        topk_indices,
+//        grouped_tokens2,
+//        mixtral_config.num_local_experts,
+//        1.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
+//        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
+//            .c_str());
+
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
