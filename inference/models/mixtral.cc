@@ -261,9 +261,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
          expert_idx++) {
-      printf("w1 input has dimensions %d %d %d\n", grouped_tokens[expert_idx]->dims[0], grouped_tokens[expert_idx]->dims[1], grouped_tokens[expert_idx]->dims[2]);
-      printf("ff_norm input has dimensions %d %d %d\n", ff_norm->dims[0], ff_norm->dims[1], ff_norm->dims[2]);
-      Tensor w1 = ff.dense(grouped_tokens[expert_idx],
+      Tensor w1 = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
                            false,
