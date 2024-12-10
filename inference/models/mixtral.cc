@@ -273,7 +273,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
          expert_idx++) {
-      grouped_tokens[expert_idx] = ff_norm; // TODO this is a dirty fix. Restore using group_by!
+//      grouped_tokens[expert_idx] = ff_norm; // TODO this is a dirty fix. Restore using group_by!
       Tensor w1 = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
@@ -336,7 +336,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     aggregate_inputs[0] = topk_values;
     aggregate_inputs[1] = topk_indices;
-    aggregate_inputs[2] = topk_values;
+    aggregate_inputs[2] = topk_values; // TODO Causes Legion runtime error!!
     aggregate_inputs[3] = gate;
     mlp_out = aggregate_inputs[5]; // TODO don't use only one expert
 //    mlp_out = ff.aggregate(aggregate_inputs,
