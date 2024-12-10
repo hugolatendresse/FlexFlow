@@ -78,6 +78,7 @@ Tensor FFModel::dense(const Tensor input,
       dims[i] = input->dims[i];
     }
     dims[0] = outDim;
+    cout << "Dense " << name << " Creating output tensor with dims[2] = " << dims[0] << endl;
     li->outputs[0] = create_tensor_legion_ordering(
         numdims, dims, data_type, li, 0, true /*create_grad*/);
   }
