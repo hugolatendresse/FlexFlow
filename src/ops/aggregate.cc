@@ -385,34 +385,34 @@ void Aggregate::forward_task(Task const *task,
   Rect<3> rect_output = runtime->get_index_space_domain(
       ctx, task->regions[n + 2].region.get_index_space());
 
-  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
-  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
-  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
-         rect_gate_assign.hi[0] - rect_gate_assign.lo[0]);
-  assert(batch_size == rect_output.hi[1] - rect_output.lo[1] + 1);
-  coord_t out_dim = rect_output.hi[0] - rect_output.lo[0] + 1;
-
-  // get exp_preds
-  float *exp_preds[n];
-  // get first exp_pred and row and out_dim
-  Domain exp_domain = runtime->get_index_space_domain(
-      ctx, task->regions[2].region.get_index_space());
-  exp_preds[0] = helperGetTensorPointerWO<float>(
-      regions[2], task->regions[2], FID_DATA, ctx, runtime);
-  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
-  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-
-  for (int i = 1; i < n; i++) {
-    exp_domain = runtime->get_index_space_domain(
-        ctx, task->regions[i + 2].region.get_index_space());
-    exp_preds[i] = helperGetTensorPointerWO<float>(
-        regions[i + 2], task->regions[i + 2], FID_DATA, ctx, runtime);
-
-    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
-    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-  }
-
-  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
+//  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
+//  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
+//  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
+//         rect_gate_assign.hi[0] - rect_gate_assign.lo[0]);
+//  assert(batch_size == rect_output.hi[1] - rect_output.lo[1] + 1);
+//  coord_t out_dim = rect_output.hi[0] - rect_output.lo[0] + 1;
+//
+//  // get exp_preds
+//  float *exp_preds[n];
+//  // get first exp_pred and row and out_dim
+//  Domain exp_domain = runtime->get_index_space_domain(
+//      ctx, task->regions[2].region.get_index_space());
+//  exp_preds[0] = helperGetTensorPointerWO<float>(
+//      regions[2], task->regions[2], FID_DATA, ctx, runtime);
+//  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
+//  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+//
+//  for (int i = 1; i < n; i++) {
+//    exp_domain = runtime->get_index_space_domain(
+//        ctx, task->regions[i + 2].region.get_index_space());
+//    exp_preds[i] = helperGetTensorPointerWO<float>(
+//        regions[i + 2], task->regions[i + 2], FID_DATA, ctx, runtime);
+//
+//    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
+//    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+//  }
+//
+//  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
 //  printf("CALLING FOWARD_KERNEL_WRAPPER IN FORWARD_TASK\n");
 
