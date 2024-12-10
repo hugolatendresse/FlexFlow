@@ -2730,6 +2730,7 @@ void FFModel::deserialize_graph_optimal_view(
       case OP_EW_ADD:
       case OP_EW_SUB:
       case OP_EW_MUL:
+      case OP_EW_DIV:
       case OP_EW_MAX:
       case OP_EW_MIN: {
         node = ElementBinary::deserialize(*this, dez, inputs, num_inputs);
