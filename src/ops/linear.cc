@@ -281,7 +281,7 @@ Linear::Linear(FFModel &model,
   }
 
   // Create the output tensor
-  std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[2] = " << output_shape.dims[0].size << std::endl;
+  std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[2] = " << output_shape.dims[2].size << std::endl;
   outputs[0] = model.create_parallel_tensor_legion_ordering(
       output_shape.num_dims, output_shape.dims, _data_type, this);
 
