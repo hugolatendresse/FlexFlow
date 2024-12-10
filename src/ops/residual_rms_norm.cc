@@ -82,6 +82,10 @@ void FFModel::residual_rms_norm(const Tensor input1,
       (data_type != input2->data_type)
           ? cast(input2, data_type, "type cast for residual_rms_norm")
           : input2;
+  printf("ResidualRMSNorm %s: input1 dims: %d, input2 dims: %d\n",name, input1->num_dims, input2->num_dims);
+  printf("ResidualRMSNorm %s: input1 dims[0] size: %d, input2 dims[0] size: %d\n",name, input1->dims[0].size, input2->dims[0].size);
+  printf("ResidualRMSNorm %s: input1 dims[1] size: %d, input2 dims[1] size: %d\n",name, input1->dims[1].size, input2->dims[1].size);
+  printf("ResidualRMSNorm %s: input1 dims[2] size: %d, input2 dims[2] size: %d\n",name, input1->dims[2].size, input2->dims[2].size);
   Layer *rm = new Layer(this,
                         OP_RESIDUAL_RMS_NORM,
                         data_type,
