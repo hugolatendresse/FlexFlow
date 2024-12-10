@@ -52,7 +52,7 @@ public:
   static void inference_task(Legion::Task const *task,
                              std::vector<Legion::PhysicalRegion> const &regions,
                              Context ctx,
-                             Runtime *runtime) override;
+                             Runtime *runtime);
   void backward(FFModel const &) override;
   void print_layer(FFModel const &model) override {
     assert(0);
