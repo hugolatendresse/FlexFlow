@@ -157,8 +157,11 @@ Group_by::Group_by(FFModel &model,
   for (int i = 0; i < num_dims; i++) {
     dims[i] = inputs[0]->dims[i];
   }
-  // replace batch size with max expert size
-  dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
+  // set max expert size
+  // TODO: this is a dirty fix while we don't use aggregate
+//  dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
+  dims[num_dims - 2].size = 128;
+  printf("max num tokens dim in output used to be %d\n", (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size));
 
   for (int i = 0; i < n; i++) {
     outputs[i] = model.create_parallel_tensor_legion_ordering(

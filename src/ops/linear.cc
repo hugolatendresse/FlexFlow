@@ -286,7 +286,7 @@ Linear::Linear(FFModel &model,
   std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[1] = " << output_shape.dims[1].size << std::endl;
   std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[2] = " << output_shape.dims[2].size << std::endl;
   std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[3] = " << output_shape.dims[3].size << std::endl;
-  // TODO for w2,
+  // TODO for w2, the dims are (1024,1,1,1) (4 dims confirmed) !! Should have sequence length somewhere...
   outputs[0] = model.create_parallel_tensor_legion_ordering(
       output_shape.num_dims, output_shape.dims, _data_type, this);
 
