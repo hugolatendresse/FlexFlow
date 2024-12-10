@@ -204,6 +204,10 @@ ResidualRMSNorm::ResidualRMSNorm(FFModel &model,
     assert(_input1->dims[i].degree == 1);
   }
   // Check that the two inputs have the same dimensions
+  printf("ResidualRMSNorm: input1 dims: %d, input2 dims: %d\n", _input1->num_dims, _input2->num_dims);
+  printf("ResidualRMSNorm: input1 dims[0] size: %d, input2 dims[0] size: %d\n", _input1->dims[0].size, _input2->dims[0].size);
+  printf("ResidualRMSNorm: input1 dims[1] size: %d, input2 dims[1] size: %d\n", _input1->dims[1].size, _input2->dims[1].size);
+  printf("ResidualRMSNorm: input1 dims[2] size: %d, input2 dims[2] size: %d\n", _input1->dims[2].size, _input2->dims[2].size);
   for (int i = 0; i < _input1->num_dims; i++) {
     assert(_input2->dims[i] == _input1->dims[i]);
   }

@@ -79,6 +79,10 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
           std::string("layers." + std::to_string(i) + ".input_layernorm")
               .c_str());
     } else {
+      printf("before rms norm in layer %d token has %d dims\n",i, token->num_dims);
+      printf("before rms norm in layer %d mlp_out has %d dims\n",i, token->num_dims);
+      printf("before rms norm in layer %d token dims are %d %d %d %d\n",i, token->dims[0], token->dims[1], token->dims[2], token->dims[3]);
+      printf("before rms norm in layer %d, mlp_out dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
       ff.residual_rms_norm(
           token,
           mlp_out,
