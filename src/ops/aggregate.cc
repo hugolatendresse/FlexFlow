@@ -205,7 +205,7 @@ void Aggregate::init_inference(FFModel const &ff,
                                std::vector<ParallelTensor> const &batch_inputs,
                                std::vector<ParallelTensor> const &batch_outputs,
                                MachineView const *mv) {
-  printf("running Aggregate::init_inference\n");
+//  printf("running Aggregate::init_inference\n");
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = batch_outputs[0]->parallel_is;
   ArgumentMap argmap;
@@ -228,7 +228,8 @@ void Aggregate::init_inference(FFModel const &ff,
 }
 
 void Aggregate::init(FFModel const &ff) {
-  printf("running Aggregate::init\n");
+  // I don't think this ever runs
+  printf("\n\n\n\n Aggregate::init is running!!!!!!!!!! \n\n\n\n");
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = outputs[0]->parallel_is;
   ArgumentMap argmap;

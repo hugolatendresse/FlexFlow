@@ -447,6 +447,9 @@ void IncMultiHeadSelfAttention::init_inference(
 
 void IncMultiHeadSelfAttention::init(FFModel const &ff) {
   printf("running IncMultiHeadSelfAttention::init\n");
+  // I don't think this ever runs
+  printf("\n\n\n\n IncMultiHeadSelfAttention::init is running!!!!!!!!!! \n\n\n\n");
+
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = outputs[0]->parallel_is;
   ArgumentMap argmap;
