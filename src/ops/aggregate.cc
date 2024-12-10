@@ -427,10 +427,26 @@ void Aggregate::forward_task(Task const *task,
   // TODO in the end, create and place our changes in Aggregate::inference_task
 //  printf("running Aggregate::forward_task\n");
 
-  assert(regions.size() == task->regions.size());
-  int n = regions.size() - 3;
+
+  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
+  if (bc->num_tokens == 0) {
+    return;
+  }
 
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
+
+  int total_input_cnt = 10; // TODO remove magic number
+  GenericTensorAccessorR inputs[total_input_cnt];
+  for (int i = 0; i < total_input_cnt; i++) {
+      inputs[i] = helperGetGenericTensorAccessorRO(
+          m->input_type[i], regions[i], task->regions[i], FID_DATA, ctx, runtime);
+  }
+  GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
+      m->output_type[0], regions[total_input_cnt], task->regions[total_input_cnt], FID_DATA, ctx, runtime);
+
+  //assert(regions.size() == task->regions.size());
+  //int n = regions.size() - 3;
+
 
 
   // TODO One of those three linese cause the mismatch error
