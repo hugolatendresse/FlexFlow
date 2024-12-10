@@ -214,7 +214,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     // MoE
     Tensor gate = ff.dense(
-        ff_norm,
+        ff_norm,// (hidden_size, 1, 128)
         mixtral_config.num_local_experts,
         AC_MODE_NONE,
         false,
@@ -246,7 +246,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
     ff.group_by(
-        ff_norm,
+        ff_norm, // (hidden_size, 1, 128)
         topk_indices,
         grouped_tokens,
         mixtral_config.num_local_experts,

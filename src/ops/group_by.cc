@@ -41,10 +41,13 @@ using Legion::TaskArgument;
 using Legion::TaskLauncher;
 using PCG::Node;
 
+
+// TODO replace "n" by "num_local_experts" everywhere in the script (only did it partially)
+
 void FFModel::group_by(const Tensor input,
                        const Tensor assign,
                        Tensor *outputs,
-                       int n,
+                       int num_local_experts,
                        float alpha,
                        char const *name) {
   Layer *li = new Layer(this,
@@ -53,35 +56,37 @@ void FFModel::group_by(const Tensor input,
                         name,
                         2 /*inputs*/,
                         0 /*weights*/,
-                        n /*outputs*/,
+                        num_local_experts /*outputs*/,
                         input,
                         assign);
   {
-    int k = assign->dims[0];
+    int k_experts_per_tok = assign->dims[0];
     int num_dims = input->num_dims;
     int dims[num_dims];
     for (int i = 0; i < num_dims - 1; i++) {
       dims[i] = input->dims[i];
       printf("All outputs of group_by with have dims[%d] = %d\n", i, dims[i]);
     }
-    // Batch dimension is replaced by max expert capacity
+
+    // Define max expert capacity
     if (alpha != 0.0f) {
-      dims[num_dims - 1] = (int)ceil(alpha * k / n * input->dims[num_dims - 1]);
+      int seq_len = input->dims[num_dims - 1];
+      dims[num_dims - 1] = (int)ceil(alpha * k_experts_per_tok / num_local_experts * seq_len);
     }
 
     printf("All outputs of group_by with have dims[%d] = %d\n", num_dims-1, dims[num_dims-1]);
 
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < num_local_experts; i++) {
       // Creating one tensor per expert, each with size (DATA_DIMS,
       // max_expert_capacity)
       li->outputs[i] = create_tensor_legion_ordering(
           num_dims, dims, input->data_type, li, 0, true /*create_grad*/);
     }
   }
-  li->add_int_property("n", n);
+  li->add_int_property("n", num_local_experts);
   li->add_float_property("alpha", alpha);
   layers.push_back(li);
-  for (int i = 0; i < n; i++) {
+  for (int i = 0; i < num_local_experts; i++) {
     assert(li->outputs[i] != nullptr);
     outputs[i] = li->outputs[i];
     assert(outputs[i] != nullptr);
@@ -94,11 +99,11 @@ Op *Group_by::create_operator_from_layer(
     std::vector<ParallelTensor> const &inputs) {
   long long value1;
   layer->get_int_property("n", value1);
-  int n = value1;
+  int num_local_experts = value1;
   float value2;
   layer->get_float_property("alpha", value2);
   float alpha = value2;
-  return new Group_by(model, layer->layer_guid, inputs[0], inputs[1], n, alpha, layer->name);
+  return new Group_by(model, layer->layer_guid, inputs[0], inputs[1], num_local_experts, alpha, layer->name);
 }
 
 Group_byParams Group_by::get_params() const {
@@ -146,7 +151,7 @@ Group_by::Group_by(FFModel &model,
   // overwrite layer_guid
   layer_guid = _layer_guid;
 
-  int k = _assign->dims[0].size;
+  int k_experts_per_tok = _assign->dims[0].size;
   int num_dims = _input->num_dims;
 
   ParallelDim dims[MAX_TENSOR_DIM];
@@ -154,7 +159,7 @@ Group_by::Group_by(FFModel &model,
     dims[i] = inputs[0]->dims[i];
   }
   // replace batch size with max expert size
-  dims[num_dims - 2].size = (int)ceil(alpha * k / n * inputs[0]->dims[1].size);
+  dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
 
   for (int i = 0; i < n; i++) {
     outputs[i] = model.create_parallel_tensor_legion_ordering(
@@ -363,7 +368,7 @@ void Group_by::forward_task(Task const *task,
   coord_t input_cols = input_domain.hi()[0] - input_domain.lo()[0] + 1;
   assert(input_rows == assign_domain.hi()[1] - assign_domain.lo()[1] + 1);
 
-  int k = assign_domain.hi()[0] - assign_domain.lo()[0] + 1;
+  int k_experts_per_tok = assign_domain.hi()[0] - assign_domain.lo()[0] + 1;
   int batch_size = input_rows;
   int data_dim = input_cols;
 
@@ -394,7 +399,7 @@ void Group_by::forward_task(Task const *task,
                                    assign.get_int32_ptr(),
                                    outputs,
                                    n,
-                                   k,
+                                   k_experts_per_tok,
                                    batch_size,
                                    data_dim);
   if (m->inference_debugging) {
@@ -480,7 +485,7 @@ void Group_by::inference_task(Task const *task,
   coord_t input_cols = input_domain.hi()[0] - input_domain.lo()[0] + 1;
   assert(input_rows == assign_domain.hi()[1] - assign_domain.lo()[1] + 1);
 
-  int k = assign_domain.hi()[0] - assign_domain.lo()[0] + 1;
+  int k_experts_per_tok = assign_domain.hi()[0] - assign_domain.lo()[0] + 1;
   int batch_size = input_rows;
   int data_dim = input_cols;
 
@@ -511,7 +516,7 @@ void Group_by::inference_task(Task const *task,
                                      assign.get_int32_ptr(),
                                      outputs,
                                      n,
-                                     k,
+                                     k_experts_per_tok,
                                      batch_size,
                                      data_dim);
   if (m->inference_debugging) {
@@ -587,7 +592,7 @@ void Group_by::backward_task(Task const *task,
   coord_t input_cols = rect_input_grad.hi[0] - rect_input_grad.lo[0] + 1;
   assert(input_rows == rect_assign.hi[1] - rect_assign.lo[1] + 1);
 
-  int k = rect_assign.hi[0] - rect_assign.lo[0] + 1;
+  int k_experts_per_tok = rect_assign.hi[0] - rect_assign.lo[0] + 1;
   int batch_size = input_rows;
   int data_dim = input_cols;
 
@@ -609,7 +614,7 @@ void Group_by::backward_task(Task const *task,
                                     acc_assign.ptr(rect_assign),
                                     output_grads,
                                     n,
-                                    k,
+                                    k_experts_per_tok,
                                     batch_size,
                                     data_dim);
 }
@@ -706,13 +711,13 @@ bool Group_by::measure_operator_cost(Simulator *sim,
   std::function<void()> forward, backward;
 
   Domain in_domain = sub_input.get_domain();
-  int k = sub_assign.dims[0].size;
+  int k_experts_per_tok = sub_assign.dims[0].size;
   int batch_size = in_domain.hi()[1] - in_domain.lo()[1] + 1;
   int data_dim = in_domain.hi()[0] - in_domain.lo()[0] + 1;
 
   forward = [&] {
     forward_kernel_wrapper(
-        m, input_ptr, assign_ptr, output_ptrs, n, k, batch_size, data_dim);
+        m, input_ptr, assign_ptr, output_ptrs, n, k_experts_per_tok, batch_size, data_dim);
   };
 
   inner_measure_operator_cost(sim, forward, backward, cost_metrics);
