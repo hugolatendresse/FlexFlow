@@ -425,7 +425,7 @@ void Aggregate::inference_task(Task const *task,
 
   Aggregate::forward_kernel_wrapper(m,
                                     exp_preds,
-                                    static_cast<float const *>acc_gate_assign.ptr(rect_gate_assign), //MK: I feel like these need to be typed?
+                                    static_cast<float const *>(acc_gate_assign.ptr(rect_gate_assign)), //MK: I feel like these need to be typed?
                                     acc_gate_pred.ptr(rect_gate_pred),
                                     acc_output.ptr(rect_output),
                                     n,
