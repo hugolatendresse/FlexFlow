@@ -427,7 +427,7 @@ void Aggregate::inference_task(Task const *task,
                                     exp_preds,
                                     static_cast<int32_t const *>(acc_gate_assign.ptr(rect_gate_assign)), //MK: I feel like these need to be typed?
                                     static_cast<float const *>(acc_gate_pred.ptr(rect_gate_pred)),
-                                    static_cast<float const *>(acc_output.ptr(rect_output)),
+                                    static_cast<float *>(acc_output.ptr(rect_output)),
                                     n,
                                     k,
                                     rows,
