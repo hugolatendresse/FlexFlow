@@ -53,8 +53,6 @@ Tensor FFModel::aggregate(
                         1 /*outputs*/,
                         inputs);
   {
-    printf("aggregate first: [0] %d", inputs[0]->num_dims);
-
     int num_dim = inputs[4]->num_dims;
     // Set output shape
     int dims[MAX_TENSOR_DIM];
@@ -68,7 +66,6 @@ Tensor FFModel::aggregate(
   li->add_int_property("n", n);
   li->add_float_property("lambda_bal", lambda_bal);
   layers.push_back(li);
-  printf("aggregate DFS(_SD): [0] %d", inputs[0]->num_dims);
   return li->outputs[0];
 }
 
@@ -82,7 +79,6 @@ Op *Aggregate::create_operator_from_layer(
   float value2;
   layer->get_float_property("lambda_bal", value2);
   float lambda_bal = value2;
-  printf("aggregate second: [0] %d", inputs[0]->num_dims);
   return new Aggregate(model, layer->layer_guid, inputs.data(), n, lambda_bal, layer->name);
 }
 
@@ -134,7 +130,7 @@ Aggregate::Aggregate(FFModel &model,
   assert(n + 4 == numInputs);
   assert(n > 0);
   //printf("In Aggregate::Aggregate, inputs[0]->num_dims = %d\n", inputs[0]->num_dims);
-  printf("In Aggregate::Aggregate, inputs[0] dims are %d %d %d %d\n", inputs[0]->dims[0].size, inputs[0]->dims[1].size, inputs[0]->dims[2].size, inputs[0]->dims[3].size);
+  // printf("In Aggregate::Aggregate, inputs[0] dims are %d %d %d %d\n", inputs[0]->dims[0].size, inputs[0]->dims[1].size, inputs[0]->dims[2].size, inputs[0]->dims[3].size);
   // TODO the inequalities below used to be equalities, not sure it's a good idea to switch to inequalities
   assert(inputs[0]->num_dims >= 2 + 1);  // inputs[0] has dims (experts_per_token, 1, 128, 1) (confirmed dim count)
   assert(inputs[1]->num_dims >= 2 + 1);
@@ -379,6 +375,7 @@ void Aggregate::inference_task(Task const *task,
                              Runtime *runtime) {
   assert(regions.size() == task->regions.size());
   int n = regions.size() - 3;
+  printf("%d", n);
 
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 
