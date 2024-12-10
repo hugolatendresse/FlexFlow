@@ -49,7 +49,7 @@ public:
                               std::vector<ParallelTensor> const &,
                               std::vector<ParallelTensor> const &,
                               MachineView const *mv = nullptr) override;
-  void inference_task(Task const *task,
+  static void inference_task(Legion::Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) override;
