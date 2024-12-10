@@ -222,6 +222,37 @@ void Aggregate::init_inference(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
+  // gate_preds
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
+                                                    0 /*projection id*/,
+                                                    READ_WRITE,
+                                                    EXCLUSIVE,
+                                                    batch_inputs[0]->region));
+  launcher.add_field(0, FID_DATA);
+  // gate_assign
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[1]->part,
+                                                    0 /*projection id*/,
+                                                    READ_WRITE,
+                                                    EXCLUSIVE,
+                                                    batch_inputs[1]->region));
+  launcher.add_field(1, FID_DATA);
+  // exp_preds
+  for (int i = 0; i < n; i++) {
+    launcher.add_region_requirement(RegionRequirement(batch_inputs[i + 4]->part,
+                                    0 /*projection id*/,
+                                    READ_WRITE,
+                                    EXCLUSIVE,
+                                    batch_inputs[i + 4]->region));
+    launcher.add_field(i + 2, FID_DATA);
+  }
+  // output
+  launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
+                                                    0 /*projection id*/,
+                                                    WRITE_ONLY,
+                                                    EXCLUSIVE,
+                                                    batch_outputs[0]->region));
+  launcher.add_field(n + 2, FID_DATA);
+
   FutureMap fm = runtime->execute_index_space(ctx, launcher);
   fm.wait_all_results();
   set_opmeta_from_futuremap_inference(ff, fm, batch_outputs[0]);
@@ -253,7 +284,7 @@ OpMeta *Aggregate::init_task(Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) {
-  printf("running Aggregate::init_task\n");
+//  printf("running Aggregate::init_task\n");
   Aggregate *agg = (Aggregate *)task->args;
   FFHandler handle = *((FFHandler *)task->local_args);
   AggregateMeta *m = new AggregateMeta(handle, agg);
@@ -266,6 +297,7 @@ OpMeta *Aggregate::init_task(Task const *task,
 
 void Aggregate::forward(FFModel const &ff) {
   printf("running Aggregate::forward\n");
+  printf("\n\n\n\n Aggregate::init is running!!!!!!!!!! \n\n\n\n"); // Don't expect this to run
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -316,7 +348,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
                                std::vector<ParallelTensor> const &batch_inputs,
                                std::vector<ParallelTensor> const &batch_outputs,
                                MachineView const *mv) {
-  printf("running Aggregate::inference\n");
+//  printf("running Aggregate::inference\n");
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -351,12 +383,11 @@ FutureMap Aggregate::inference(FFModel const &ff,
   launcher.add_field(1, FID_DATA);
   // exp_preds
   for (int i = 0; i < n; i++) {
-    launcher.add_region_requirement(
-        RegionRequirement(batch_inputs[i + 4]->part,
-                          0 /*projection id*/,
-                          READ_WRITE,
-                          EXCLUSIVE,
-                          batch_inputs[i + 4]->region));
+    launcher.add_region_requirement(RegionRequirement(batch_inputs[i + 4]->part,
+                                    0 /*projection id*/,
+                                    READ_WRITE,
+                                    EXCLUSIVE,
+                                    batch_inputs[i + 4]->region));
     launcher.add_field(i + 2, FID_DATA);
   }
   // output
@@ -373,7 +404,7 @@ void Aggregate::forward_task(Task const *task,
                              std::vector<PhysicalRegion> const &regions,
                              Context ctx,
                              Runtime *runtime) {
-  printf("running Aggregate::forward_task\n");
+//  printf("running Aggregate::forward_task\n");
 
   assert(regions.size() == task->regions.size());
   int n = regions.size() - 3;
