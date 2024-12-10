@@ -425,9 +425,9 @@ void Aggregate::inference_task(Task const *task,
 
   Aggregate::forward_kernel_wrapper(m,
                                     exp_preds,
-                                    acc_gate_assign.get_int32_ptr(rect_gate_assign),
-                                    acc_gate_pred.get_float_ptr(rect_gate_pred),
-                                    acc_output.get_float_ptr(rect_output),
+                                    static_cast<float const *>acc_gate_assign.ptr(rect_gate_assign), //MK: I feel like these need to be typed?
+                                    acc_gate_pred.ptr(rect_gate_pred),
+                                    acc_output.ptr(rect_output),
                                     n,
                                     k,
                                     rows,
