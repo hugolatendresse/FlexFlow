@@ -466,9 +466,10 @@ void Aggregate::forward_task(Task const *task,
 
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 
+  // TODO block below causes aliasing error
   int total_input_cnt = 10; // TODO remove magic number
   GenericTensorAccessorR inputs[total_input_cnt];
-  // 10 input types are defined, 10 regions are defined
+  // 10 input types are defined, and 10 regions are defined
   for (int i = 0; i < total_input_cnt; i++) {
       inputs[i] = helperGetGenericTensorAccessorRO(
           m->input_type[i], regions[i], task->regions[i], FID_DATA, ctx, runtime);
@@ -479,6 +480,13 @@ void Aggregate::forward_task(Task const *task,
   //assert(regions.size() == task->regions.size());
   //int n = regions.size() - 3;
 
+  Domain input_domains[total_input_cnt];
+  for (int i = 0; i < total_input_cnt; i++) {
+    input_domains[i] = runtime->get_index_space_domain(
+        ctx, task->regions[i].region.get_index_space());
+  }
+  Domain output_domain = runtime->get_index_space_domain(
+      ctx, task->regions[total_input_cnt].region.get_index_space());
 
 
   // TODO One of those three linese cause the mismatch error
