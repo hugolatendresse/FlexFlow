@@ -414,7 +414,6 @@ void Aggregate::forward_task(Task const *task,
 
   int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
-
 //  printf("CALLING FOWARD_KERNEL_WRAPPER IN FORWARD_TASK\n");
 
 //  Aggregate::forward_kernel_wrapper(m,
