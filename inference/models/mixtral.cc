@@ -249,18 +249,19 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     Tensor topk_indices = topk_out[1];  // (experts_per_tok, 1, 128) (confirmed 3 dims)
 
     Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
-    ff.group_by(
-        ff_norm, // (hidden_size, 1, 128)
-        topk_indices,
-        grouped_tokens,
-        mixtral_config.num_local_experts,
-        1.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
-        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
-            .c_str());
+//    ff.group_by(
+//        ff_norm, // (hidden_size, 1, 128)
+//        topk_indices,
+//        grouped_tokens,
+//        mixtral_config.num_local_experts,
+//        1.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
+//        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
+//            .c_str());
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
          expert_idx++) {
+      grouped_tokens[expert_idx] = ff_norm;
       Tensor w1 = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
