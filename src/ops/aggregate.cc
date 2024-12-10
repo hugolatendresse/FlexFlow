@@ -52,6 +52,7 @@ Tensor FFModel::aggregate(
                         1 /*outputs*/,
                         inputs);
   {
+    assert(n == 6 && "Dirty magic numbers in this script assume n==6");
     int num_dim = inputs[4]->num_dims;
     // Set output shape
     int dims[MAX_TENSOR_DIM];
@@ -287,10 +288,25 @@ OpMeta *Aggregate::init_task(Task const *task,
 //  printf("running Aggregate::init_task\n");
   Aggregate *agg = (Aggregate *)task->args;
   FFHandler handle = *((FFHandler *)task->local_args);
-  AggregateMeta *m = new AggregateMeta(handle, agg);
+  Memory gpu_mem = get_proc_mem(Machine::get_machine(), task->target_proc);
+  MemoryAllocator gpu_mem_allocator(gpu_mem);
+
+  // TODO inc_multihead_self_attention has a lot more steps here.
+  //  ... including some steps with GenericTensorAccessorR
+  //  Shoud I include?
+
+  AggregateMeta *m = new AggregateMeta(handle, agg, gpu_mem_allocator);
+  for (int i = 0; i < 10; i++) { // TODO 10 is a magic number
+    m->input_type[i] = agg->inputs[i]->data_type;
+  }
+  m->output_type[0] = agg->outputs[0]->data_type;
+  std::strcpy(m->op_name, ssm->name);
+
+  // TODO three instructions below are not in SigmoidSiluMulti::init_task
   m->profiling = agg->profiling;
   m->inference_debugging = agg->inference_debugging;
   std::strcpy(m->op_name, agg->name);
+
   m->layer_guid = agg->layer_guid;
   return m;
 }
@@ -414,7 +430,7 @@ void Aggregate::forward_task(Task const *task,
 
   // TODO One of those three linese cause the mismatch error
   // get gate_pred, gate_assign, output
-  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA); // This one alone does cause the problem
+  //AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA); // This one alone does cause the problem
 //  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
 //  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA); // This one alone also causes the problem
 

@@ -491,8 +491,7 @@ OpMeta *IncMultiHeadSelfAttention::init_task(
     Context ctx,
     Runtime *runtime) {
 //  printf("running IncMultiHeadSelfAttention::init_task\n");
-  IncMultiHeadSelfAttention const *attn =
-      (IncMultiHeadSelfAttention *)task->args;
+  IncMultiHeadSelfAttention const *attn = (IncMultiHeadSelfAttention *)task->args;
   FFHandler handle = *((FFHandler const *)task->local_args);
 
   GenericTensorAccessorR input =

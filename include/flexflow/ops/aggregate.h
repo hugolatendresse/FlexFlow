@@ -15,10 +15,18 @@ class Aggregate;
 
 class AggregateMeta : public OpMeta {
 public:
-  AggregateMeta(FFHandler handle, Aggregate const *aggr);
+  AggregateMeta(FFHandler handle,
+                Aggregate const *aggr,
+                MemoryAllocator &gpu_mem_allocator);
   ~AggregateMeta(void);
   float **dev_exp_preds;
   float **dev_exp_grads;
+
+public:
+  Realm::RegionInstance reserveInst;
+  // PEFT related fields
+  void *input_activation;
+  size_t allocated_peft_buffer_size = 0;
 };
 
 class Aggregate : public Op {

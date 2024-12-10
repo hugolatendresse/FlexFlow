@@ -239,14 +239,14 @@ OpMeta *SigmoidSiluMulti::init_task(Task const *task,
   FFHandler handle = *((FFHandler const *)task->local_args);
   Memory gpu_mem = get_proc_mem(Machine::get_machine(), task->target_proc);
   MemoryAllocator gpu_mem_allocator(gpu_mem);
-  SigmoidSiluMultiMeta *meta =
+  SigmoidSiluMultiMeta *m =
       new SigmoidSiluMultiMeta(handle, ssm, gpu_mem_allocator);
-  meta->input_type[0] = ssm->inputs[0]->data_type;
-  meta->input_type[1] = ssm->inputs[1]->data_type;
-  meta->output_type[0] = ssm->outputs[0]->data_type;
-  std::strcpy(meta->op_name, ssm->name);
-  meta->layer_guid = ssm->layer_guid;
-  return meta;
+  m->input_type[0] = ssm->inputs[0]->data_type;
+  m->input_type[1] = ssm->inputs[1]->data_type;
+  m->output_type[0] = ssm->outputs[0]->data_type;
+  std::strcpy(m->op_name, ssm->name);
+  m->layer_guid = ssm->layer_guid;
+  return m;
 }
 
 void SigmoidSiluMulti::forward(FFModel const &ff) {

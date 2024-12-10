@@ -311,10 +311,15 @@ AggregateMeta::AggregateMeta(FFHandler handler, Aggregate const *aggr)
     : OpMeta(handler, aggr) {
   checkCUDA(cudaMalloc(&dev_exp_preds, aggr->n * sizeof(float *)));
   checkCUDA(cudaMalloc(&dev_exp_grads, aggr->n * sizeof(float *)));
+  profiling = ssm->profiling;
+  inference_debugging = ssm->inference_debugging;
 }
 AggregateMeta::~AggregateMeta(void) {
   checkCUDA(cudaFree(&dev_exp_preds));
   checkCUDA(cudaFree(&dev_exp_grads));
+  if (reserveInst != Realm::RegionInstance::NO_INST) {
+    reserveInst.destroy();
+  }
 }
 
 }; // namespace FlexFlow
