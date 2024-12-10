@@ -358,6 +358,22 @@ void Aggregate::forward(FFModel const &ff) {
                                                     EXCLUSIVE,
                                                     inputs[1]->region));
   launcher.add_field(1, FID_DATA);
+
+  launcher.add_region_requirement(RegionRequirement(inputs[2]->part,
+                                                0 /*projection id*/,
+                                                READ_WRITE,
+                                                EXCLUSIVE,
+                                                inputs[2]->region));
+  launcher.add_field(2, FID_DATA);
+
+  launcher.add_region_requirement(RegionRequirement(inputs[3]->part,
+                                                  0 /*projection id*/,
+                                                  READ_WRITE,
+                                                  EXCLUSIVE,
+                                                  inputs[3]->region));
+  launcher.add_field(3, FID_DATA);
+
+
   // exp_preds
   for (int i = 0; i < n; i++) {
     launcher.add_region_requirement(RegionRequirement(inputs[i + 4]->part,
@@ -593,161 +609,161 @@ void Aggregate::inference_task(Task const *task,
 
 
 void Aggregate::backward(FFModel const &ff) {
-  ArgumentMap argmap;
-  Context ctx = ff.config.lg_ctx;
-  Runtime *runtime = ff.config.lg_hlr;
-  set_argumentmap_for_backward(ff, argmap);
-  IndexLauncher launcher(AGGREGATE_BWD_TASK_ID,
-                         parallel_is,
-                         TaskArgument(this, sizeof(Aggregate)),
-                         argmap,
-                         Predicate::TRUE_PRED,
-                         false /*must*/,
-                         0 /*mapper_id*/,
-                         outputs[0]->machine_view.hash());
-  // gate_preds
-  launcher.add_region_requirement(RegionRequirement(inputs[0]->part,
-                                                    0 /*projection id*/,
-                                                    READ_WRITE,
-                                                    EXCLUSIVE,
-                                                    inputs[0]->region));
-  launcher.add_field(0, FID_DATA);
-  // gate_assign
-  launcher.add_region_requirement(RegionRequirement(inputs[1]->part,
-                                                    0 /*projection id*/,
-                                                    READ_ONLY,
-                                                    EXCLUSIVE,
-                                                    inputs[1]->region));
-  launcher.add_field(1, FID_DATA);
-  // true gate_assign
-  launcher.add_region_requirement(RegionRequirement(inputs[2]->part,
-                                                    0 /*projection id*/,
-                                                    READ_ONLY,
-                                                    EXCLUSIVE,
-                                                    inputs[2]->region));
-  launcher.add_field(2, FID_DATA);
-  // full_gate gradients
-  launcher.add_region_requirement(RegionRequirement(inputs[3]->part_grad,
-                                                    0 /*projection id*/,
-                                                    READ_WRITE,
-                                                    EXCLUSIVE,
-                                                    inputs[3]->region_grad));
-  launcher.add_field(3, FID_DATA);
-  // exp_preds
-  for (int i = 0; i < n; i++) {
-    launcher.add_region_requirement(RegionRequirement(inputs[i + 4]->part,
-                                                      0 /*projection id*/,
-                                                      READ_WRITE,
-                                                      EXCLUSIVE,
-                                                      inputs[i + 4]->region));
-    launcher.add_field(i + 4, FID_DATA);
-  }
-  // exp_preds gradients
-  for (int i = 0; i < n; i++) {
-    launcher.add_region_requirement(RegionRequirement(inputs[i + 4]->part_grad,
-                          0 /*projection id*/,
-                          READ_WRITE,
-                          EXCLUSIVE,
-                          inputs[i + 4]->region_grad));
-    launcher.add_field(i + n + 4, FID_DATA);
-  }
-
-  // output
-  launcher.add_region_requirement(RegionRequirement(outputs[0]->part_grad,
-                                                    0 /*projection id*/,
-                                                    READ_WRITE,
-                                                    EXCLUSIVE,
-                                                    outputs[0]->region_grad));
-  launcher.add_field(2 * n + 4, FID_DATA);
-
-  runtime->execute_index_space(ctx, launcher);
+//  ArgumentMap argmap;
+//  Context ctx = ff.config.lg_ctx;
+//  Runtime *runtime = ff.config.lg_hlr;
+//  set_argumentmap_for_backward(ff, argmap);
+//  IndexLauncher launcher(AGGREGATE_BWD_TASK_ID,
+//                         parallel_is,
+//                         TaskArgument(this, sizeof(Aggregate)),
+//                         argmap,
+//                         Predicate::TRUE_PRED,
+//                         false /*must*/,
+//                         0 /*mapper_id*/,
+//                         outputs[0]->machine_view.hash());
+//  // gate_preds
+//  launcher.add_region_requirement(RegionRequirement(inputs[0]->part,
+//                                                    0 /*projection id*/,
+//                                                    READ_WRITE,
+//                                                    EXCLUSIVE,
+//                                                    inputs[0]->region));
+//  launcher.add_field(0, FID_DATA);
+//  // gate_assign
+//  launcher.add_region_requirement(RegionRequirement(inputs[1]->part,
+//                                                    0 /*projection id*/,
+//                                                    READ_ONLY,
+//                                                    EXCLUSIVE,
+//                                                    inputs[1]->region));
+//  launcher.add_field(1, FID_DATA);
+//  // true gate_assign
+//  launcher.add_region_requirement(RegionRequirement(inputs[2]->part,
+//                                                    0 /*projection id*/,
+//                                                    READ_ONLY,
+//                                                    EXCLUSIVE,
+//                                                    inputs[2]->region));
+//  launcher.add_field(2, FID_DATA);
+//  // full_gate gradients
+//  launcher.add_region_requirement(RegionRequirement(inputs[3]->part_grad,
+//                                                    0 /*projection id*/,
+//                                                    READ_WRITE,
+//                                                    EXCLUSIVE,
+//                                                    inputs[3]->region_grad));
+//  launcher.add_field(3, FID_DATA);
+//  // exp_preds
+//  for (int i = 0; i < n; i++) {
+//    launcher.add_region_requirement(RegionRequirement(inputs[i + 4]->part,
+//                                                      0 /*projection id*/,
+//                                                      READ_WRITE,
+//                                                      EXCLUSIVE,
+//                                                      inputs[i + 4]->region));
+//    launcher.add_field(i + 4, FID_DATA);
+//  }
+//  // exp_preds gradients
+//  for (int i = 0; i < n; i++) {
+//    launcher.add_region_requirement(RegionRequirement(inputs[i + 4]->part_grad,
+//                          0 /*projection id*/,
+//                          READ_WRITE,
+//                          EXCLUSIVE,
+//                          inputs[i + 4]->region_grad));
+//    launcher.add_field(i + n + 4, FID_DATA);
+//  }
+//
+//  // output
+//  launcher.add_region_requirement(RegionRequirement(outputs[0]->part_grad,
+//                                                    0 /*projection id*/,
+//                                                    READ_WRITE,
+//                                                    EXCLUSIVE,
+//                                                    outputs[0]->region_grad));
+//  launcher.add_field(2 * n + 4, FID_DATA);
+//
+//  runtime->execute_index_space(ctx, launcher);
 }
 
 void Aggregate::backward_task(Task const *task,
                               std::vector<PhysicalRegion> const &regions,
                               Context ctx,
                               Runtime *runtime) {
-  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
-  int n = ((Aggregate *)task->args)->n;
-  float lambda_bal = ((Aggregate *)task->args)->lambda_bal;
-
-  assert((int)regions.size() == 2 * n + 5);
-  assert((int)task->regions.size() == 2 * n + 5);
-
-  // get gate_pred, gate_grad, gate_assign, output_grad
-  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
-  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
-  AccessorRO<int, 3> const acc_true_gate_assign(regions[2], FID_DATA);
-  AccessorWO<float, 3> const full_acc_gate_grad(regions[3], FID_DATA);
-  AccessorRO<float, 3> const acc_output_grad(regions[2 * n + 4], FID_DATA);
-
-  Rect<3> rect_gate_pred = runtime->get_index_space_domain(
-      ctx, task->regions[0].region.get_index_space());
-  Rect<3> rect_gate_assign = runtime->get_index_space_domain(
-      ctx, task->regions[1].region.get_index_space());
-  Rect<3> rect_true_gate_assign = runtime->get_index_space_domain(
-      ctx, task->regions[2].region.get_index_space());
-  Rect<3> rect_full_gate_grad = runtime->get_index_space_domain(
-      ctx, task->regions[3].region.get_index_space());
-  Rect<3> rect_out_grad = runtime->get_index_space_domain(
-      ctx, task->regions[2 * n + 4].region.get_index_space());
-
-  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
-  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
-  assert(rect_gate_assign == rect_true_gate_assign);
-  assert(batch_size == rect_out_grad.hi[1] - rect_out_grad.lo[1] + 1);
-  assert(batch_size ==
-         rect_full_gate_grad.hi[1] - rect_full_gate_grad.lo[1] + 1);
-  coord_t k = rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1;
-  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] + 1 == k);
-  coord_t out_dim = rect_out_grad.hi[0] - rect_out_grad.lo[0] + 1;
-  assert(n == rect_full_gate_grad.hi[0] - rect_full_gate_grad.lo[0] + 1);
-
-  // get exp_preds
-  float *exp_preds[n];
-  // get first exp_pred and row
-  Domain exp_domain = runtime->get_index_space_domain(
-      ctx, task->regions[4].region.get_index_space());
-  exp_preds[0] = helperGetTensorPointerRW<float>(
-      regions[4], task->regions[4], FID_DATA, ctx, runtime);
-  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
-  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-
-  for (int i = 1; i < n; i++) {
-    exp_domain = runtime->get_index_space_domain(
-        ctx, task->regions[i + 4].region.get_index_space());
-    exp_preds[i] = helperGetTensorPointerRW<float>(
-        regions[i + 4], task->regions[i + 4], FID_DATA, ctx, runtime);
-    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
-    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-  }
-
-  // get chosen_exp_grads
-  float *exp_grads[n];
-  for (int i = 0; i < n; i++) {
-    exp_domain = runtime->get_index_space_domain(
-        ctx, task->regions[n + i + 4].region.get_index_space());
-    exp_grads[i] = helperGetTensorPointerRW<float>(
-        regions[n + i + 4], task->regions[n + i + 4], FID_DATA, ctx, runtime);
-    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
-    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-  }
-
-  Aggregate::backward_kernel_wrapper(
-      m,
-      exp_preds,
-      exp_grads,
-      acc_gate_assign.ptr(rect_gate_assign),
-      acc_true_gate_assign.ptr(rect_true_gate_assign),
-      acc_gate_pred.ptr(rect_gate_pred),
-      full_acc_gate_grad.ptr(rect_full_gate_grad),
-      acc_output_grad.ptr(rect_out_grad),
-      n,
-      k,
-      rows,
-      lambda_bal,
-      batch_size,
-      out_dim);
+//  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
+//  int n = ((Aggregate *)task->args)->n;
+//  float lambda_bal = ((Aggregate *)task->args)->lambda_bal;
+//
+//  assert((int)regions.size() == 2 * n + 5);
+//  assert((int)task->regions.size() == 2 * n + 5);
+//
+//  // get gate_pred, gate_grad, gate_assign, output_grad
+//  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
+//  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
+//  AccessorRO<int, 3> const acc_true_gate_assign(regions[2], FID_DATA);
+//  AccessorWO<float, 3> const full_acc_gate_grad(regions[3], FID_DATA);
+//  AccessorRO<float, 3> const acc_output_grad(regions[2 * n + 4], FID_DATA);
+//
+//  Rect<3> rect_gate_pred = runtime->get_index_space_domain(
+//      ctx, task->regions[0].region.get_index_space());
+//  Rect<3> rect_gate_assign = runtime->get_index_space_domain(
+//      ctx, task->regions[1].region.get_index_space());
+//  Rect<3> rect_true_gate_assign = runtime->get_index_space_domain(
+//      ctx, task->regions[2].region.get_index_space());
+//  Rect<3> rect_full_gate_grad = runtime->get_index_space_domain(
+//      ctx, task->regions[3].region.get_index_space());
+//  Rect<3> rect_out_grad = runtime->get_index_space_domain(
+//      ctx, task->regions[2 * n + 4].region.get_index_space());
+//
+//  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
+//  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
+//  assert(rect_gate_assign == rect_true_gate_assign);
+//  assert(batch_size == rect_out_grad.hi[1] - rect_out_grad.lo[1] + 1);
+//  assert(batch_size ==
+//         rect_full_gate_grad.hi[1] - rect_full_gate_grad.lo[1] + 1);
+//  coord_t k = rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1;
+//  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] + 1 == k);
+//  coord_t out_dim = rect_out_grad.hi[0] - rect_out_grad.lo[0] + 1;
+//  assert(n == rect_full_gate_grad.hi[0] - rect_full_gate_grad.lo[0] + 1);
+//
+//  // get exp_preds
+//  float *exp_preds[n];
+//  // get first exp_pred and row
+//  Domain exp_domain = runtime->get_index_space_domain(
+//      ctx, task->regions[4].region.get_index_space());
+//  exp_preds[0] = helperGetTensorPointerRW<float>(
+//      regions[4], task->regions[4], FID_DATA, ctx, runtime);
+//  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
+//  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+//
+//  for (int i = 1; i < n; i++) {
+//    exp_domain = runtime->get_index_space_domain(
+//        ctx, task->regions[i + 4].region.get_index_space());
+//    exp_preds[i] = helperGetTensorPointerRW<float>(
+//        regions[i + 4], task->regions[i + 4], FID_DATA, ctx, runtime);
+//    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
+//    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+//  }
+//
+//  // get chosen_exp_grads
+//  float *exp_grads[n];
+//  for (int i = 0; i < n; i++) {
+//    exp_domain = runtime->get_index_space_domain(
+//        ctx, task->regions[n + i + 4].region.get_index_space());
+//    exp_grads[i] = helperGetTensorPointerRW<float>(
+//        regions[n + i + 4], task->regions[n + i + 4], FID_DATA, ctx, runtime);
+//    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
+//    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+//  }
+//
+//  Aggregate::backward_kernel_wrapper(
+//      m,
+//      exp_preds,
+//      exp_grads,
+//      acc_gate_assign.ptr(rect_gate_assign),
+//      acc_true_gate_assign.ptr(rect_true_gate_assign),
+//      acc_gate_pred.ptr(rect_gate_pred),
+//      full_acc_gate_grad.ptr(rect_full_gate_grad),
+//      acc_output_grad.ptr(rect_out_grad),
+//      n,
+//      k,
+//      rows,
+//      lambda_bal,
+//      batch_size,
+//      out_dim);
 }
 
 void Aggregate::serialize(Legion::Serializer &sez) const {
