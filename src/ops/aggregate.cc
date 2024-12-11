@@ -531,7 +531,7 @@ void Aggregate::forward_task(Task const *task,
   int n = 6; // TODO remove magic number
 //
 //  // get gate_pred, gate_assign, output
-  AccessorRW<float, 4> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch
+  AccessorRW<float, 3> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch
 //  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
 //  AccessorWO<float, 3> const acc_output(regions[n + FIXED_ARG_CNT], FID_DATA);
 
