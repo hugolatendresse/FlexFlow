@@ -523,15 +523,12 @@ void Aggregate::forward_task(Task const *task,
   // TODO in the end, create and place our changes in Aggregate::inference_task
 //  printf("running Aggregate::forward_task\n");
 //
-//  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
-//  if (bc->num_tokens == 0) {
-//    return;
-//  }
-//  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
+
+  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
 //
-//  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
+  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 //
-//  int n = 6; // TODO remove magic number
+  int n = 6; // TODO remove magic number
 //
 //  // get gate_pred, gate_assign, output
 //  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
