@@ -267,7 +267,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         topk_indices,
         grouped_tokens,
         mixtral_config.num_local_experts,
-        1.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
+        0.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
             .c_str());
 
