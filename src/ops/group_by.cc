@@ -169,10 +169,10 @@ Group_by::Group_by(FFModel &model,
   // MK why is this - 2 instead of - 1? Also, why no alpha?
   if (alpha != 0.0f) {
 //      int seq_len = input->dims[num_dims - 1];
-      dims[num_dims - 1].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
+      dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
     
   } else { // MK: added this for dummy groupby
-    dims[num_dims - 1].size = 128;
+    dims[num_dims - 2].size = 128;
     //dims[num_dims - 2] = 128;
   }
   // dims[num_dims - 2].size = 128;
