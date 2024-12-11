@@ -23,6 +23,7 @@ public:
   using Params = Group_byParams;
   using Input = std::pair<ParallelTensor, ParallelTensor>;
   Group_by(FFModel &model,
+          LayerID const &_layer_guid,
            const ParallelTensor _input,
            const ParallelTensor _assign,
            int _n,

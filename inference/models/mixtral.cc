@@ -88,13 +88,13 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
           std::string("layers." + std::to_string(i) + ".input_layernorm")
               .c_str());
     } else {
-      printf("before rms norm in layer %d token has %d dims\n",i, token->num_dims);
-      printf("before rms norm in layer %d mlp_out has %d dims\n",i, token->num_dims);
-      printf("before rms norm in layer %d token dims are %d %d %d %d\n",i, token->dims[0], token->dims[1], token->dims[2], token->dims[3]);
-      printf("before rms norm in layer %d, mlp_out dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
-      ff.residual_rms_norm(
-          token,
-          mlp_out,
+//      printf("before first rms norm in layer %d token has %d dims\n",i, token->num_dims);
+//      printf("before first rms norm in layer %d mlp_out has %d dims\n",i, token->num_dims);
+//      printf("before first rms norm in layer %d token dims are %d %d %d %d\n",i, token->dims[0], token->dims[1], token->dims[2], token->dims[3]);
+//      printf("before first rms norm in layer %d, mlp_out dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
+      ff.residual_rms_norm( // TODO this op has an mlp_out tensor of (1024,1,1) dim for some reason
+          token, //  (1024, 1, 128) confirmed 3 dims
+          mlp_out, //  (1024, 1, 128) confirmed 3 dims
           token_att_norm,
           mixtral_config.rms_norm_eps,
           mixtral_config.hidden_size,
@@ -242,14 +242,12 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         0.0f,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_gate")
             .c_str());
-
-    gate = ff.softmax( // TODO This sfotmax is wrong! not taking across last dim, which is not supported by ff!
+    gate = ff.softmax(
         gate, // (num_experts, 1, 128)
         0,
         DT_NONE,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_softmax")
             .c_str());
-
 
     Tensor topk_out[2] = {nullptr, nullptr};
     printf("gate data_type %d\n", gate->data_type);
@@ -258,97 +256,138 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         topk_out,
         mixtral_config.num_experts_per_tok,
         false,
-        std::string("layers." + std::to_string(i) + ".block_sparse_moe_topk").c_str() // No corresponding weights
-        );
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_topk")
+            .c_str());
     Tensor topk_values = topk_out[0]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
-    Tensor topk_indices = topk_out[1]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
+    Tensor topk_indices = topk_out[1];  // (experts_per_tok, 1, 128) (confirmed 3 dims)
 
-//    TODO understand why this causes graph.cc complains that last layer has multiple inputs
-//      Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
-//      ff.group_by(
-//          ff_norm,
-//          topk_indices,
-//          grouped_tokens,
-//          mixtral_config.num_local_experts,
-//          0.0f,
-//          std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby").c_str()); // No corresponding weights
+    Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
+    ff.group_by( // TODO this group_by does not crash, but it sets all tokens to 0 or something! Need to figure out why it make outptu tokens all the same
+        ff_norm, // (hidden_size, 1, 128)
+        topk_indices,
+        grouped_tokens,
+        mixtral_config.num_local_experts,
+        1.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
+        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
+            .c_str());
 
-    // grouped_tokens[0] has dims (1024, 1, 0)
+    // Can use this to create a grouped_tokens2 used no where just to see if group_by can run successfully
+//    Tensor grouped_tokens2[mixtral_config.num_local_experts] = {nullptr};
+//    ff.group_by(
+//        ff_norm, // (hidden_size, 1, 128)
+//        topk_indices,
+//        grouped_tokens2,
+//        mixtral_config.num_local_experts,
+//        1.0f, // TODO understand why this does not cause a dimension of 128? maybe the 128 is never set?
+//        std::string("layers." + std::to_string(i) + ".block_sparse_moe_groupby")
+//            .c_str());
+
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
-    Tensor one_aggregate_inputs[1] = {nullptr};
+    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
+         expert_idx++) {
+      grouped_tokens[expert_idx] = ff_norm; // TODO this is a dirty fix. Restore using group_by!
+      Tensor w1 = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
+                           mixtral_config.intermediate_size,
+                           AC_MODE_NONE,
+                           false,
+                           DT_NONE,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           REG_MODE_NONE,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_" +
+                                       std::to_string(expert_idx) + "_w1")
+                               .c_str());
 
-    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
-	Tensor w1 = ff.dense(
-        			   ff_norm, // TODO should use grouped_tokens here. Dimensions of expert input will be wrong
-                       mixtral_config.intermediate_size,
-                       AC_MODE_NONE,
-                       false,
-                       DT_NONE,
-                       nullptr,
-                       nullptr,
-                       nullptr,
-                       REG_MODE_NONE,
-                       0.0f,
-                       std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_" +
-                                       std::to_string(expert_idx) + "_w1").c_str());
+      Tensor w3 = ff.dense(grouped_tokens[expert_idx],
+                           mixtral_config.intermediate_size,
+                           AC_MODE_NONE,
+                           false,
+                           DT_NONE,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           REG_MODE_NONE,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_" +
+                                       std::to_string(expert_idx) + "_w3")
+                               .c_str());
 
-  	Tensor w3 = ff.dense(
-            		   ff_norm, // TODO should use grouped_tokens here. Dimensions of expert input will be wrong
-                       mixtral_config.intermediate_size,
-                       AC_MODE_NONE,
-                       false,
-                       DT_NONE,
-                       nullptr,
-                       nullptr,
-                       nullptr,
-                       REG_MODE_NONE,
-                       0.0f,
-                       std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_" +
-                                       std::to_string(expert_idx) + "_w3").c_str());
+      Tensor multi =
+          ff.sigmoid_silu_multi(w1,
+                                w3,
+                                DT_NONE,
+                                std::string("layers." + std::to_string(i) +
+                                            ".block_sparse_moe_experts_" +
+                                            std::to_string(expert_idx) + "ssm")
+                                    .c_str());
 
-  Tensor multi = ff.sigmoid_silu_multi(w1, w3); //DT_NONE,std::string("layers." + std::to_string(i) +".block_sparse_moe_experts." +std::to_string(expert_idx) + "ssm").c_str());
-
-  Tensor w2 = ff.dense( // output has dims (1024, 1, 0), 3 dims confirmed
-      				   multi,
-                       mixtral_config.hidden_size,
-                       AC_MODE_NONE,
-                       false,
-                       DT_NONE,
-                       nullptr,
-                       nullptr,
-                       nullptr,
-                       REG_MODE_NONE,
-                       0.0f,
-                       std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_" +
-                                       std::to_string(expert_idx) + "_w2").c_str());
-    aggregate_inputs[4 + expert_idx] = w2; // (1024, 1, 0), 3 dims confirmed
+      Tensor w2 = ff.dense(multi,
+                           mixtral_config.hidden_size, /*outDim*/
+                           AC_MODE_NONE,
+                           false,
+                           DT_NONE,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           REG_MODE_NONE,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_" +
+                                       std::to_string(expert_idx) + "_w2")
+                               .c_str());
+      aggregate_inputs[4 + expert_idx] = w2;
     }
 
-      // TODO those two lines are techincally nice-to-haves!! skip for now, but it fails if we uncomment
-//       Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true); // (2, 1, 1)
-//    topk_values = ff.divide(topk_values, topk_values_reduced); // (2, 1, 128)
+    // TODO uncomment, but is a nice-to-have at this point
+//    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true);
+//    topk_values = ff.divide(topk_values, topk_values_reduced);
 
-    aggregate_inputs[0] = topk_values; // (experts_per_tok, 1, 128) (3 dims confirmed)
-    aggregate_inputs[1] = topk_indices; // (experts_per_tok, 1, 128) (3 dims confirmed)
-    aggregate_inputs[2] = topk_values; // TODO this is a tmp fix
-    aggregate_inputs[3] = gate;  // TODO this is a tmp fix TODO decide vs dummygate
+    mlp_out = aggregate_inputs[5]; // TODO don't use only one expert
 
-        mlp_out = aggregate_inputs[5]; // TODO don't use just one expert
+// Everything below is needed to run test and use aggregate
+
+//    Tensor topk_values_DUMMY = ff.softmax(
+//        topk_values,
+//        -1,
+//        DT_NONE,
+//        std::string("layers." + std::to_string(i) + ".dummy2")
+//            .c_str());
+
+//    Tensor gate_DUMMY = ff.softmax(
+//        gate, // (num_experts, 1, 128)
+//        -1,
+//        DT_NONE,
+//        std::string("layers." + std::to_string(i) + ".dummy")
+//
+//            .c_str());
+//
+//    aggregate_inputs[0] = topk_values;
+//    aggregate_inputs[1] = topk_indices;
+//    aggregate_inputs[2] = topk_values_DUMMY; // TODO Causes Legion runtime error!!
+//    aggregate_inputs[3] = gate_DUMMY;
+//
 //    mlp_out = ff.aggregate(aggregate_inputs,
-////                           topk_values->dims[2],
+//    Tensor mlp_out2 = ff.aggregate(aggregate_inputs,
 //                           mixtral_config.num_local_experts,
 //                           0.0f,
-//                           std::string("layers." + std::to_string(i) + ".block_sparse_moe_experts_aggregate").c_str());
+//                           std::string("layers." + std::to_string(i) +
+//                                       ".block_sparse_moe_experts_aggregate")
+//                               .c_str());
 
   // mlp_out has dimensions (hidden_size, 1, 128)
-  printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
+//  printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
   assert(mlp_out->dims[0] == mixtral_config.hidden_size && "mlp_out dims[0] != hidden_size");
   assert(mlp_out->dims[1] == 1 && "mlp_out dims[1] != 1");
   assert(mlp_out->dims[2] == 128 && "mlp_out dims[2] != 128");
-  printf("seq length is now %d\n", mlp_out->dims[2]);
+//  printf("seq length is now %d\n", mlp_out->dims[2]);
 
  }
+
   // final normalization and linear
   Tensor final_rms_norm_output[2] = {nullptr, nullptr};
   ff.residual_rms_norm(token,

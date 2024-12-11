@@ -200,6 +200,7 @@ __global__ void agg_backward_kernel(float **exp_preds,
 
 /*static*/
 void Aggregate::forward_kernel_wrapper(AggregateMeta const *m,
+                                       BatchConfig const *bc,
                                        float **exp_preds,
                                        int const *acc_gate_assign_ptr,
                                        float const *acc_gate_pred_ptr,
@@ -307,14 +308,23 @@ void Aggregate::backward_kernel_wrapper(AggregateMeta const *m,
   }
 }
 
-AggregateMeta::AggregateMeta(FFHandler handler, Aggregate const *aggr)
+// Only needed if we allocate memory , hwihci s not our case
+AggregateMeta::AggregateMeta(FFHandler handler,
+                             Aggregate const *aggr,
+                             MemoryAllocator &gpu_mem_allocator)
     : OpMeta(handler, aggr) {
   checkCUDA(cudaMalloc(&dev_exp_preds, aggr->n * sizeof(float *)));
   checkCUDA(cudaMalloc(&dev_exp_grads, aggr->n * sizeof(float *)));
+  profiling = aggr->profiling;
+  inference_debugging = aggr->inference_debugging;
 }
+
 AggregateMeta::~AggregateMeta(void) {
   checkCUDA(cudaFree(&dev_exp_preds));
   checkCUDA(cudaFree(&dev_exp_grads));
+  if (reserveInst != Realm::RegionInstance::NO_INST) {
+    reserveInst.destroy();
+  }
 }
 
 }; // namespace FlexFlow

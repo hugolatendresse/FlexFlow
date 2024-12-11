@@ -148,7 +148,7 @@ Softmax::Softmax(FFModel &model,
          _input),
       dim(_dim) {
   // Currently assume we always perform softmax along the inner most dim
-//  assert(dim == 0); // TODO actually allow this!!
+  //  assert(dim == 0); // TODO actually allow this!!
   layer_guid = _layer_guid;
   ParallelDim dims[MAX_TENSOR_DIM];
   int numdim = _input->num_dims;

@@ -201,6 +201,7 @@ __global__ void agg_backward_kernel(float **exp_preds,
 
 /*static*/
 void Aggregate::forward_kernel_wrapper(AggregateMeta const *m,
+                                       BatchConfig bc,
                                        float **exp_preds,
                                        int const *acc_gate_assign_ptr,
                                        float const *acc_gate_pred_ptr,
@@ -281,14 +282,22 @@ void Aggregate::backward_kernel_wrapper(AggregateMeta const *m,
                      out_dim);
 }
 
-AggregateMeta::AggregateMeta(FFHandler handler, Aggregate const *aggr)
+AggregateMeta::AggregateMeta(FFHandler handler,
+                             Aggregate const *aggr,
+                             MemoryAllocator &gpu_mem_allocator)
     : OpMeta(handler, aggr) {
   checkCUDA(hipMalloc(&dev_exp_preds, aggr->n * sizeof(float *)));
   checkCUDA(hipMalloc(&dev_exp_grads, aggr->n * sizeof(float *)));
+  profiling = ssm->profiling;
+  inference_debugging = ssm->inference_debugging;
 }
+
 AggregateMeta::~AggregateMeta(void) {
   checkCUDA(hipFree(&dev_exp_preds));
   checkCUDA(hipFree(&dev_exp_grads));
+  if (reserveInst != Realm::RegionInstance::NO_INST) {
+    reserveInst.destroy();
+  }
 }
 
 }; // namespace FlexFlow

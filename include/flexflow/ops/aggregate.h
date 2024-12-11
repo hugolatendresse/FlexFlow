@@ -15,10 +15,18 @@ class Aggregate;
 
 class AggregateMeta : public OpMeta {
 public:
-  AggregateMeta(FFHandler handle, Aggregate const *aggr);
+  AggregateMeta(FFHandler handle,
+                Aggregate const *aggr,
+                MemoryAllocator &gpu_mem_allocator);
   ~AggregateMeta(void);
   float **dev_exp_preds;
   float **dev_exp_grads;
+
+public:
+  Realm::RegionInstance reserveInst;
+  // PEFT related fields
+  void *input_activation;
+  size_t allocated_peft_buffer_size = 0;
 };
 
 class Aggregate : public Op {
@@ -26,6 +34,7 @@ public:
   using Params = AggregateParams;
   using Input = std::vector<ParallelTensor>;
   Aggregate(FFModel &model,
+            LayerID const &_layer_guid,
             ParallelTensor const *inputs,
             int _n,
             float _lambda_bal,
@@ -64,7 +73,12 @@ public:
                            std::vector<Legion::PhysicalRegion> const &regions,
                            Legion::Context ctx,
                            Legion::Runtime *runtime);
+  static void inference_task(Legion::Task const *task,
+                           std::vector<Legion::PhysicalRegion> const &regions,
+                           Legion::Context ctx,
+                           Legion::Runtime *runtime);
   static void forward_kernel_wrapper(AggregateMeta const *m,
+                                     BatchConfig const *bc,
                                      float **exp_preds,
                                      int const *acc_gate_assign_ptr,
                                      float const *acc_gate_pred_ptr,
@@ -74,6 +88,16 @@ public:
                                      int rows,
                                      int const batch_size,
                                      int out_dim);
+  static void inference_kernel_wrapper(AggregateMeta const *m, // TODO never actually defined, I think
+                                   float **exp_preds,
+                                   int const *acc_gate_assign_ptr,
+                                   float const *acc_gate_pred_ptr,
+                                   float *acc_output_ptr,
+                                   int n,
+                                   int const k,
+                                   int rows,
+                                   int const batch_size,
+                                   int out_dim);
   static void backward_task(Legion::Task const *task,
                             std::vector<Legion::PhysicalRegion> const &regions,
                             Legion::Context ctx,
