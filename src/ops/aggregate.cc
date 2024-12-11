@@ -205,6 +205,7 @@ Aggregate::Aggregate(FFModel &model,
   numWeights = 0;
 }
 
+
 Aggregate::Aggregate(FFModel &model,
                      Aggregate const &other,
                      std::vector<ParallelTensor> const &inputs)
