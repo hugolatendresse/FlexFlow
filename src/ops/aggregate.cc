@@ -489,18 +489,18 @@ void Aggregate::forward_task(Task const *task,
   Domain output_domain = runtime->get_index_space_domain(
       ctx, task->regions[total_input_cnt].region.get_index_space());
 
-
-  Aggregate::forward_kernel_wrapper(m,
-                                    bc,
-                                    exp_preds,
-                                    acc_gate_assign.ptr(rect_gate_assign),
-                                    acc_gate_pred.ptr(rect_gate_pred),
-                                    acc_output.ptr(rect_output),
-                                    n,
-                                    k,
-                                    rows,
-                                    batch_size,
-                                    out_dim);
+  // TODO!
+//  Aggregate::forward_kernel_wrapper(m,
+//                                    bc,
+//                                    exp_preds,
+//                                    acc_gate_assign.ptr(rect_gate_assign),
+//                                    acc_gate_pred.ptr(rect_gate_pred),
+//                                    acc_output.ptr(rect_output),
+//                                    n,
+//                                    k,
+//                                    rows,
+//                                    batch_size,
+//                                    out_dim);
 
   // TODO One of those three linese cause the mismatch error
   // get gate_pred, gate_assign, output
