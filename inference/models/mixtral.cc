@@ -376,7 +376,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //                           std::string("layers." + std::to_string(i) +
 //                                       ".block_sparse_moe_experts_aggregate")
 //                               .c_str());
-  }
 
   // mlp_out has dimensions (hidden_size, 1, 128)
 //  printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
