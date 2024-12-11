@@ -497,44 +497,44 @@ void SigmoidSiluMulti::inference_task(
     std::vector<PhysicalRegion> const &regions,
     Context ctx,
     Runtime *runtime) {
-//
-//  assert(task->regions.size() == regions.size());
-//  assert(regions.size() == 3);
-//
-//  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
-//  if (bc->num_tokens == 0) {
-//    return;
-//  }
-//
-//  SigmoidSiluMultiMeta *m = *((SigmoidSiluMultiMeta **)task->local_args);
-//
-//  GenericTensorAccessorR input1 = helperGetGenericTensorAccessorRO(
-//      m->input_type[0], regions[0], task->regions[0], FID_DATA, ctx, runtime);
-//  GenericTensorAccessorR input2 = helperGetGenericTensorAccessorRO(
-//      m->input_type[1], regions[1], task->regions[1], FID_DATA, ctx, runtime);
-//  GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
-//      m->output_type[0], regions[2], task->regions[2], FID_DATA, ctx, runtime);
-//
-//  Domain input1_domain = runtime->get_index_space_domain(
-//      ctx, task->regions[0].region.get_index_space());
-//  Domain input2_domain = runtime->get_index_space_domain(
-//      ctx, task->regions[1].region.get_index_space());
-//  Domain output_domain = runtime->get_index_space_domain(
-//      ctx, task->regions[2].region.get_index_space());
-//
-//  assert(input1_domain.get_volume() == input2_domain.get_volume());
-//  assert(input1_domain.get_volume() == output_domain.get_volume());
-//
-//  assert(input1_domain == input2_domain);
-//  assert(input1_domain == output_domain);
-//
-//  SigmoidSiluMulti::inference_kernel_wrapper(m, bc, input1, input2, output);
-//  if (m->inference_debugging) {
-//    assert(task->index_point.get_dim() == 1);
-//    int shard_id = task->index_point.point_data[0];
-//    SigmoidSiluMulti::save_inference_tensors_to_file(
-//        m, shard_id, bc, {input1, input2}, {}, {output});
-//  }
+
+  assert(task->regions.size() == regions.size());
+  assert(regions.size() == 3);
+
+  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
+  if (bc->num_tokens == 0) {
+    return;
+  }
+
+  SigmoidSiluMultiMeta *m = *((SigmoidSiluMultiMeta **)task->local_args);
+
+  GenericTensorAccessorR input1 = helperGetGenericTensorAccessorRO(
+      m->input_type[0], regions[0], task->regions[0], FID_DATA, ctx, runtime);
+  GenericTensorAccessorR input2 = helperGetGenericTensorAccessorRO(
+      m->input_type[1], regions[1], task->regions[1], FID_DATA, ctx, runtime);
+  GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
+      m->output_type[0], regions[2], task->regions[2], FID_DATA, ctx, runtime);
+
+  Domain input1_domain = runtime->get_index_space_domain(
+      ctx, task->regions[0].region.get_index_space());
+  Domain input2_domain = runtime->get_index_space_domain(
+      ctx, task->regions[1].region.get_index_space());
+  Domain output_domain = runtime->get_index_space_domain(
+      ctx, task->regions[2].region.get_index_space());
+
+  assert(input1_domain.get_volume() == input2_domain.get_volume());
+  assert(input1_domain.get_volume() == output_domain.get_volume());
+
+  assert(input1_domain == input2_domain);
+  assert(input1_domain == output_domain);
+
+  SigmoidSiluMulti::inference_kernel_wrapper(m, bc, input1, input2, output);
+  if (m->inference_debugging) {
+    assert(task->index_point.get_dim() == 1);
+    int shard_id = task->index_point.point_data[0];
+    SigmoidSiluMulti::save_inference_tensors_to_file(
+        m, shard_id, bc, {input1, input2}, {}, {output});
+  }
 }
 
 bool SigmoidSiluMulti::measure_operator_cost(Simulator *sim,
