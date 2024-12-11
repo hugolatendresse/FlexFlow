@@ -493,7 +493,8 @@ OpMeta *IncMultiHeadSelfAttention::init_task(
 //  printf("running IncMultiHeadSelfAttention::init_task\n");
   IncMultiHeadSelfAttention const *attn = (IncMultiHeadSelfAttention *)task->args;
   FFHandler handle = *((FFHandler const *)task->local_args);
-
+  // We call the below to get the shape info, so we can do the assertions
+  // I also shouldnt care about offloading
   GenericTensorAccessorR input =
       helperGetGenericTensorAccessorRO(attn->inputs[0]->data_type,
                                        regions[0],
@@ -745,6 +746,7 @@ bool IncMultiHeadSelfAttention::get_int_parameter(PMParameter para,
   }
 }
 
+// Just for benchmarking, don't need that
 bool IncMultiHeadSelfAttention::measure_operator_cost(
     Simulator *sim, MachineView const &mv, CostMetrics &cost_metrics) const {
   return false;

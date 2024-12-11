@@ -181,7 +181,7 @@ void SigmoidSiluMulti::inference_kernel_wrapper(
                              min(CUDA_NUM_THREADS, num_elements),
                              0,
                              stream>>>(input1.domain.get_volume(),
-                                       input1.get_float_ptr(),
+                                       input1.get_float_ptr(), // Ultimately we get pointers,whereas in mixtarl branch we pass pointers to this func.
                                        input2.get_float_ptr(),
                                        output.get_float_ptr());
   } else if (m->input_type[0] == DT_HALF) {
