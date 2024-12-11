@@ -551,15 +551,12 @@ void Aggregate::forward_task(Task const *task,
   Domain output_domain = runtime->get_index_space_domain(
       ctx, task->regions[total_input_cnt].region.get_index_space());
 
-  // TODO!
+  // TODO fix this call + update aggregate.cu!!
 //  Aggregate::forward_kernel_wrapper(m,
 //                                    bc,
-//                                    exp_preds,
-//                                    acc_gate_assign.ptr(rect_gate_assign),
-//                                    acc_gate_pred.ptr(rect_gate_pred),
-//                                    acc_output.ptr(rect_output),
-//                                    n,
-//                                    k,
+//                                    inputs
+//                                    6, // TODO remove magic number (numExperts)
+//                                    2, // TODO remove magic number, I ASSUME k_experts_per_tok
 //                                    rows,
 //                                    batch_size,
 //                                    out_dim);
