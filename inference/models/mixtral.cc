@@ -243,20 +243,11 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_gate")
             .c_str());
     gate = ff.softmax(
-        gate,
-        -1,
+        gate, // (num_experts, 1, 128)
+        0,
         DT_NONE,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_softmax")
             .c_str());
-
-    Tensor gate_DUMMY = ff.softmax(
-        gate,
-        -1,
-        DT_NONE,
-        std::string("layers." + std::to_string(i) + ".dummy")
-
-            .c_str());
-
 
     Tensor topk_out[2] = {nullptr, nullptr};
     printf("gate data_type %d\n", gate->data_type);
@@ -269,14 +260,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
             .c_str());
     Tensor topk_values = topk_out[0]; // (experts_per_tok, 1, 128) (confirmed 3 dims)
     Tensor topk_indices = topk_out[1];  // (experts_per_tok, 1, 128) (confirmed 3 dims)
-
-    Tensor topk_values_DUMMY = ff.softmax(
-        topk_values,
-        -1,
-        DT_NONE,
-        std::string("layers." + std::to_string(i) + ".dummy2")
-            .c_str());
-
 
     Tensor grouped_tokens[mixtral_config.num_local_experts] = {nullptr};
     ff.group_by( // TODO this group_by does not crash, but it sets all tokens to 0 or something! Need to figure out why it make outptu tokens all the same
@@ -364,11 +347,30 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true);
 //    topk_values = ff.divide(topk_values, topk_values_reduced);
 
-    aggregate_inputs[0] = topk_values;
-    aggregate_inputs[1] = topk_indices;
-    aggregate_inputs[2] = topk_values_DUMMY; // TODO Causes Legion runtime error!!
-    aggregate_inputs[3] = gate_DUMMY;
     mlp_out = aggregate_inputs[5]; // TODO don't use only one expert
+
+// Everything below is needed to run test and use aggregate
+
+//    Tensor topk_values_DUMMY = ff.softmax(
+//        topk_values,
+//        -1,
+//        DT_NONE,
+//        std::string("layers." + std::to_string(i) + ".dummy2")
+//            .c_str());
+
+//    Tensor gate_DUMMY = ff.softmax(
+//        gate, // (num_experts, 1, 128)
+//        -1,
+//        DT_NONE,
+//        std::string("layers." + std::to_string(i) + ".dummy")
+//
+//            .c_str());
+//
+//    aggregate_inputs[0] = topk_values;
+//    aggregate_inputs[1] = topk_indices;
+//    aggregate_inputs[2] = topk_values_DUMMY; // TODO Causes Legion runtime error!!
+//    aggregate_inputs[3] = gate_DUMMY;
+//
 //    mlp_out = ff.aggregate(aggregate_inputs,
 //    Tensor mlp_out2 = ff.aggregate(aggregate_inputs,
 //                           mixtral_config.num_local_experts,
@@ -385,6 +387,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //  printf("seq length is now %d\n", mlp_out->dims[2]);
 
  }
+
   // final normalization and linear
   Tensor final_rms_norm_output[2] = {nullptr, nullptr};
   ff.residual_rms_norm(token,
