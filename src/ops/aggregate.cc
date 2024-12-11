@@ -300,7 +300,7 @@ void Aggregate::init_inference(FFModel const &ff,
                                     READ_WRITE,
                                     EXCLUSIVE,
                                     batch_inputs[i + 4]->region));
-    launcher.add_field(i + 4, FID_DATA);
+    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
   }
   // output
   launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
@@ -422,7 +422,7 @@ void Aggregate::forward(FFModel const &ff) {
                                                       READ_WRITE,
                                                       EXCLUSIVE,
                                                       inputs[i + FIXED_ARG_CNT]->region));
-    launcher.add_field(i + 2, FID_DATA);
+    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
   }
   // output
   launcher.add_region_requirement(RegionRequirement(outputs[0]->part,
@@ -481,7 +481,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
                           READ_WRITE,
                           EXCLUSIVE,
                           batch_inputs[i + FIXED_ARG_CNT]->region));
-    launcher.add_field(i + 2, FID_DATA);
+    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
   }
   // output
   launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
@@ -499,7 +499,6 @@ void Aggregate::forward_task(Task const *task,
                              Runtime *runtime) {
   // TODO in the end, create and place our changes in Aggregate::inference_task
 //  printf("running Aggregate::forward_task\n");
-
 
   BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
   if (bc->num_tokens == 0) {
@@ -720,7 +719,7 @@ void Aggregate::backward(FFModel const &ff) {
 //                                                      READ_WRITE,
 //                                                      EXCLUSIVE,
 //                                                      inputs[i + 4]->region));
-//    launcher.add_field(i + 4, FID_DATA);
+//    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
 //  }
 //  // exp_preds gradients
 //  for (int i = 0; i < n; i++) {
@@ -729,7 +728,7 @@ void Aggregate::backward(FFModel const &ff) {
 //                          READ_WRITE,
 //                          EXCLUSIVE,
 //                          inputs[i + 4]->region_grad));
-//    launcher.add_field(i + n + 4, FID_DATA);
+//    launcher.add_field(i + n + FIXED_ARG_CNT, FID_DATA);
 //  }
 //
 //  // output
