@@ -523,35 +523,34 @@ void Aggregate::forward_task(Task const *task,
   // TODO in the end, create and place our changes in Aggregate::inference_task
 //  printf("running Aggregate::forward_task\n");
 
-  // TODO I commented out try to debug legion errors, but need to uncomment
-//  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
-//  if (bc->num_tokens == 0) {
-//    return;
-//  }
-//
-//  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
-//
-//  int total_input_cnt = 10; // TODO remove magic number
-//  GenericTensorAccessorR inputs[total_input_cnt];
-//  // 10 input types are defined, and 10 regions are defined
-//  for (int i = 0; i < total_input_cnt; i++) {
-//      inputs[i] = helperGetGenericTensorAccessorRO(
-//          m->input_type[i], regions[i], task->regions[i], FID_DATA, ctx, runtime);
-//  }
-//  GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
-//      m->output_type[0], regions[total_input_cnt], task->regions[total_input_cnt], FID_DATA, ctx, runtime);
+  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
+  if (bc->num_tokens == 0) {
+    return;
+  }
+
+  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
+
+  int total_input_cnt = 10; // TODO remove magic number
+  GenericTensorAccessorR inputs[total_input_cnt];
+  // 10 input types are defined, and 10 regions are defined
+  for (int i = 0; i < total_input_cnt; i++) {
+      inputs[i] = helperGetGenericTensorAccessorRO(
+          m->input_type[i], regions[i], task->regions[i], FID_DATA, ctx, runtime);
+  }
+  GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
+      m->output_type[0], regions[total_input_cnt], task->regions[total_input_cnt], FID_DATA, ctx, runtime);
 
   //assert(regions.size() == task->regions.size());
   //int n = regions.size() - 3;
 
 // TODO I commented out try to debug legion erros, but need to uncomment
-//  Domain input_domains[total_input_cnt];
-//  for (int i = 0; i < total_input_cnt; i++) {
-//    input_domains[i] = runtime->get_index_space_domain(
-//        ctx, task->regions[i].region.get_index_space());
-//  }
-//  Domain output_domain = runtime->get_index_space_domain(
-//      ctx, task->regions[total_input_cnt].region.get_index_space());
+  Domain input_domains[total_input_cnt];
+  for (int i = 0; i < total_input_cnt; i++) {
+    input_domains[i] = runtime->get_index_space_domain(
+        ctx, task->regions[i].region.get_index_space());
+  }
+  Domain output_domain = runtime->get_index_space_domain(
+      ctx, task->regions[total_input_cnt].region.get_index_space());
 
   // TODO!
 //  Aggregate::forward_kernel_wrapper(m,
