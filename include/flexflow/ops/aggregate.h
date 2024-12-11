@@ -78,6 +78,7 @@ public:
                            Legion::Context ctx,
                            Legion::Runtime *runtime);
   static void forward_kernel_wrapper(AggregateMeta const *m,
+                                     BatchConfig const *bc,
                                      float **exp_preds,
                                      int const *acc_gate_assign_ptr,
                                      float const *acc_gate_pred_ptr,
