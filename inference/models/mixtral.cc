@@ -193,7 +193,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     // MK: Changed 0 to -1 in dim
     gate = ff.softmax( // This operation fails!
         gate, // (num_experts, 1, 128)
-        -1,
+        0,
         DT_NONE,
         std::string("layers." + std::to_string(i) + ".block_sparse_moe_softmax")
             .c_str());
