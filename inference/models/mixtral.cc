@@ -370,12 +370,12 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[2] = topk_values_DUMMY;
     aggregate_inputs[3] = gate_DUMMY;
 //
-//    Tensor mlp_out2 = ff.aggregate(aggregate_inputs,
-//                           mixtral_config.num_local_experts,
-//                           0.0f,
-//                           std::string("layers." + std::to_string(i) +
-//                                       ".block_sparse_moe_experts_aggregate")
-//                               .c_str());
+    Tensor mlp_out2 = ff.aggregate(aggregate_inputs,
+                           mixtral_config.num_local_experts,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_aggregate")
+                               .c_str());
 
 //  printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
   assert(mlp_out->dims[0] == mixtral_config.hidden_size && "mlp_out dims[0] != hidden_size");
