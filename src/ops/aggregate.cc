@@ -574,7 +574,7 @@ void Aggregate::forward_task(Task const *task,
   int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
   Aggregate::forward_kernel_wrapper(m,
-                                    bc
+                                    bc,
                                     exp_preds,
                                     acc_gate_assign.ptr(rect_gate_assign),
                                     acc_gate_pred.ptr(rect_gate_pred),
