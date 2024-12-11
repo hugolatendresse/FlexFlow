@@ -552,26 +552,26 @@ void Aggregate::forward_task(Task const *task,
   assert(batch_size == rect_output.hi[1] - rect_output.lo[1] + 1);
   coord_t out_dim = rect_output.hi[0] - rect_output.lo[0] + 1;
 
-  // get exp_preds
-  float *exp_preds[n];
-  // get first exp_pred and row and out_dim
-  Domain exp_domain = runtime->get_index_space_domain(
-      ctx, task->regions[FIXED_ARG_CNT].region.get_index_space());
-  exp_preds[0] = helperGetTensorPointerWO<float>(regions[FIXED_ARG_CNT], task->regions[FIXED_ARG_CNT], FID_DATA, ctx, runtime);
-  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
-  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-
-  for (int i = 1; i < n; i++) {
-    exp_domain = runtime->get_index_space_domain(
-        ctx, task->regions[i + FIXED_ARG_CNT].region.get_index_space());
-    exp_preds[i] = helperGetTensorPointerWO<float>(
-        regions[i + FIXED_ARG_CNT], task->regions[i + FIXED_ARG_CNT], FID_DATA, ctx, runtime);
-
-    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
-    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-  }
-
-  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
+//  // get exp_preds
+//  float *exp_preds[n];
+//  // get first exp_pred and row and out_dim
+//  Domain exp_domain = runtime->get_index_space_domain(
+//      ctx, task->regions[FIXED_ARG_CNT].region.get_index_space());
+//  exp_preds[0] = helperGetTensorPointerWO<float>(regions[FIXED_ARG_CNT], task->regions[FIXED_ARG_CNT], FID_DATA, ctx, runtime);
+//  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
+//  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+//
+//  for (int i = 1; i < n; i++) {
+//    exp_domain = runtime->get_index_space_domain(
+//        ctx, task->regions[i + FIXED_ARG_CNT].region.get_index_space());
+//    exp_preds[i] = helperGetTensorPointerWO<float>(
+//        regions[i + FIXED_ARG_CNT], task->regions[i + FIXED_ARG_CNT], FID_DATA, ctx, runtime);
+//
+//    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
+//    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+//  }
+//
+//  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
 //  Aggregate::forward_kernel_wrapper(m,
 //                                    bc,
