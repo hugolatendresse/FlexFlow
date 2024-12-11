@@ -373,7 +373,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     aggregate_inputs[0] = topk_values;
     aggregate_inputs[1] = topk_indices;
-    aggregate_inputs[2] = topk_values_DUMMY;
+    aggregate_inputs[2] = topk_values_DUMMY; // TODO Delete those 2 inputs for now, have 2 fixed inputs only
     aggregate_inputs[3] = gate_DUMMY;
 //
 //    mlp_out = ff.aggregate(aggregate_inputs,
