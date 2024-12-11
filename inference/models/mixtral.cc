@@ -257,7 +257,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
             .c_str());
 
     Tensor topk_out[2] = {nullptr, nullptr};
-    printf("gate data_type %d\n", gate->data_type);
+//    printf("gate data_type %d\n", gate->data_type);
     ff.top_k( // TODO the topk_out[0] ParallelTensor output has 4 dims instead of 3. Understand why
         gate, // (num_experts, 1, 128)
         topk_out,
