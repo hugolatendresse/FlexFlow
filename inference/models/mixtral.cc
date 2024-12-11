@@ -383,6 +383,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
   assert(mlp_out->dims[2] == 128 && "mlp_out dims[2] != 128");
 //  printf("seq length is now %d\n", mlp_out->dims[2]);
 
+
  }
 
   // final normalization and linear
