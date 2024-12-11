@@ -498,7 +498,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
 //                          EXCLUSIVE,
 //                          batch_inputs[i + FIXED_ARG_CNT]->region));
 //    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
-  }
+//  }
   // output
   launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
                                                     0 /*projection id*/,
