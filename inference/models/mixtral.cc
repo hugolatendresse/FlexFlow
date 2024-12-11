@@ -370,8 +370,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[2] = topk_values_DUMMY;
     aggregate_inputs[3] = gate_DUMMY;
 //
-//    mlp_out = ff.aggregate(aggregate_inputs,
-    Tensor mlp_out2 = ff.aggregate(aggregate_inputs,
+    mlp_out = ff.aggregate(aggregate_inputs,
+//    Tensor mlp_out2 = ff.aggregate(aggregate_inputs,
                            mixtral_config.num_local_experts,
                            0.0f,
                            std::string("layers." + std::to_string(i) +
