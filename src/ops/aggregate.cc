@@ -543,7 +543,6 @@ void Aggregate::forward_task(Task const *task,
   //assert(regions.size() == task->regions.size());
   //int n = regions.size() - 3;
 
-// TODO I commented out try to debug legion erros, but need to uncomment
   Domain input_domains[total_input_cnt];
   for (int i = 0; i < total_input_cnt; i++) {
     input_domains[i] = runtime->get_index_space_domain(
