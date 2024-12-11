@@ -170,7 +170,7 @@ Group_by::Group_by(FFModel &model,
   
   if (alpha != 0.0f) {
 //      int seq_len = input->dims[num_dims - 1];
-      dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
+      dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[2].size);
     
   } else { // MK: added this for dummy groupby
     dims[num_dims - 2].size = 128;
