@@ -561,6 +561,7 @@ void Aggregate::forward_task(Task const *task,
 //                                    batch_size,
 //                                    out_dim);
 
+
   // TODO One of those three linese cause the mismatch error
   // get gate_pred, gate_assign, output
   //AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA); // This one alone does cause the problem
