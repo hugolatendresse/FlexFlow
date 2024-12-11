@@ -164,7 +164,7 @@ Group_by::Group_by(FFModel &model,
   // set max expert size
   // TODO: this is a dirty fix while we don't use aggregate
 //  dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
-  printf("num dims groupby op %d", num_dims);
+  printf("num dims groupby op %d", dims);
   dims[num_dims - 2].size = 128;
 //  printf("max num tokens dim in output used to be %d\n", (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size));
 
