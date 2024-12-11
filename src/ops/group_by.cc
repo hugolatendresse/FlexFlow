@@ -75,6 +75,7 @@ void FFModel::group_by(const Tensor input,
 //      int seq_len = input->dims[num_dims - 1];
 //      dims[num_dims - 1] = (int)ceil(alpha * k_experts_per_tok / num_local_experts * seq_len);
 //    }
+    printf("num dims ff.groupby %d", num_dims);
     dims[num_dims - 1] = 128; // TODO dirty fix while we don't use aggregate. Need to uncomment the above
     // dims = [1024, 1, 128]
 
@@ -163,6 +164,7 @@ Group_by::Group_by(FFModel &model,
   // set max expert size
   // TODO: this is a dirty fix while we don't use aggregate
 //  dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
+  printf("num dims groupby op %d", num_dims);
   dims[num_dims - 2].size = 128;
 //  printf("max num tokens dim in output used to be %d\n", (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size));
 
