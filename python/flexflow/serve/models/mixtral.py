@@ -282,5 +282,6 @@ class FlexFlowMixtral(FlexFlowModel):
     def convert_hf_model(model, dst_folder):
         os.makedirs(dst_folder, exist_ok=True)
         for name, params in model.named_parameters():
+            print("name", name)
             name = name.replace(".", "_").replace("model_", "")
             params.detach().cpu().numpy().tofile(f"{dst_folder}/{name}")
