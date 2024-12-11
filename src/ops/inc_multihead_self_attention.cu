@@ -908,7 +908,7 @@ void compute_attention_kernel_generation(IncMultiHeadSelfAttentionMeta const *m,
   int const per_head_size = m->qProjSize;
   float scale = (*m->qk_prod_scaling) ? 1.0f / sqrt(m->kProjSize) : 1.0f;
   size_t smem_sz;
-  if (per_head_size == 32) { // ok to do that 
+  if (per_head_size == 32) { // ok to do that
     constexpr int THREADS_PER_VALUE_32 = threads_per_value_t<DT, 32>::value;
     LAUNCH_ATTENTION_SCORE_KERNEL(
         DT, 32, 32, 4, THREADS_PER_VALUE_32, 128, stream);

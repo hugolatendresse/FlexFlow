@@ -50,9 +50,12 @@ void FFModel::group_by(const Tensor input,
                        int num_local_experts,
                        float alpha,
                        char const *name) {
+
+  DataType data_type = input->data_type;
+
   Layer *li = new Layer(this,
                         OP_GROUP_BY,
-                        DT_FLOAT,
+                        data_type,
                         name,
                         2 /*inputs*/,
                         0 /*weights*/,
@@ -165,7 +168,7 @@ Group_by::Group_by(FFModel &model,
 
   for (int i = 0; i < n; i++) {
     outputs[i] = model.create_parallel_tensor_legion_ordering(
-        num_dims, dims, DT_FLOAT, this, i /*owner_idx*/);
+        num_dims, dims, data_type, this, i /*owner_idx*/);
     assert(outputs[i] != nullptr);
   }
 

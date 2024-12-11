@@ -2125,7 +2125,7 @@ GraphOptimalViewSerialized
   // Be optimistic
   lambdas.emplace_back(std::make_pair(1.0, MemorySearchResult{}));
   auto try_result = try_one_lambda(
-      lambdas.back(), task, cached_simulator, perform_memory_search);
+       lambdas.back(), task, cached_simulator, perform_memory_search);
   best_graph = std::move(try_result.first);
   optimal_views = try_result.second;
 

@@ -26,6 +26,7 @@
 #include <nlohmann/json.hpp>
 #include <stack>
 #include <stdexcept>
+#include <cassert> // For assert
 
 namespace FlexFlow {
 
@@ -366,7 +367,9 @@ RequestManager::RequestGuid
                           request_.benchmarking_tokens,
                           15); // insert random number
   } else {
-    std::vector<int32_t> tokens = this->tokenizer_->Encode(request_.prompt);
+    std::vector<int32_t> tokens;
+    assert(this->tokenizer_ != nullptr && "Tokenizer is null!");
+    tokens = this->tokenizer_->Encode(request_.prompt);
     // from here on, we will only use the max_length parameter
     if (request.max_new_tokens != -1) {
       request.max_length = tokens.size() + request.max_new_tokens;

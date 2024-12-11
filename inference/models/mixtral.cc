@@ -15,6 +15,13 @@
 
 #include "mixtral.h"
 
+//#define MIXTRAL_DEBUG
+#ifdef MIXTRAL_DEBUG
+#define dbg_printf(...) printf(__VA_ARGS__)
+#else
+#define dbg_printf(...)
+#endif
+
 namespace FlexFlow {
 
 using namespace Legion;
@@ -26,13 +33,12 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                                    InferenceMode mode,
                                    GenerationConfig generation_config,
                                    bool use_full_precision) {
+
   MixtralConfig mixtral_config(model_config_file_path);
   mixtral_config.print();
 
-  if (ff.config.tensor_parallelism_degree >
-          mixtral_config.num_attention_heads ||
-      mixtral_config.num_attention_heads %
-              ff.config.tensor_parallelism_degree !=
+  if (ff.config.tensor_parallelism_degree > mixtral_config.num_attention_heads ||
+      mixtral_config.num_attention_heads % ff.config.tensor_parallelism_degree !=
           0) {
     assert(false && "The number of attention heads is smaller, or it is not "
                     "divisible by the tensor parallelism degree");
@@ -60,10 +66,13 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                               NULL,
                               embed_init,
                               "embed_tokens");
+  // token has dimensions (hidden_size, 1, 128)
 
   Tensor mlp_out = nullptr;
 
   for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
+    dbg_printf("mixtral hidden layer %d\n", i);
+
     // set transformer layer id
     ff.set_transformer_layer_id(i);
 
@@ -96,6 +105,10 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
       token = token_att_norm[0];
       att_norm = token_att_norm[1];
     }
+    // token has dimensions (hidden_size, 1, 128)
+
+
+
     Tensor qkv_proj = ff.dense(
           att_norm,
           mixtral_config.hidden_size *
@@ -200,7 +213,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         std::string("layers." + std::to_string(i) + ".self_attn.o_proj")
             .c_str());
 
-
     // step 2: SILU activaion
     Tensor token_ff_norm[2] = {nullptr, nullptr};
     ff.residual_rms_norm(
@@ -213,12 +225,12 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         DT_NONE,
         std::string("layers." + std::to_string(i) + ".post_attention_layernorm")
             .c_str());
-    token = token_ff_norm[0];
+    token = token_ff_norm[0];   // token has dimensions (hidden_size, 1, 128)
     Tensor ff_norm = token_ff_norm[1];
 
     // MoE
     Tensor gate = ff.dense(
-        ff_norm,// (hidden_size, 1, 128)
+        ff_norm, // (hidden_size, 1, 128)
         mixtral_config.num_local_experts,
         AC_MODE_NONE,
         false,
@@ -242,10 +254,12 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         -1,
         DT_NONE,
         std::string("layers." + std::to_string(i) + ".dummy")
+
             .c_str());
 
 
     Tensor topk_out[2] = {nullptr, nullptr};
+    printf("gate data_type %d\n", gate->data_type);
     ff.top_k(
         gate, // (num_experts, 1, 128)
         topk_out,
@@ -363,6 +377,15 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                                        ".block_sparse_moe_experts_aggregate")
                                .c_str());
   }
+
+  // mlp_out has dimensions (hidden_size, 1, 128)
+//  printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
+  assert(mlp_out->dims[0] == mixtral_config.hidden_size && "mlp_out dims[0] != hidden_size");
+  assert(mlp_out->dims[1] == 1 && "mlp_out dims[1] != 1");
+  assert(mlp_out->dims[2] == 128 && "mlp_out dims[2] != 128");
+//  printf("seq length is now %d\n", mlp_out->dims[2]);
+
+ }
   // final normalization and linear
   Tensor final_rms_norm_output[2] = {nullptr, nullptr};
   ff.residual_rms_norm(token,
@@ -387,23 +410,15 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                           "lm_head");
 
   Tensor output;
-  if (mode == BEAM_SEARCH_MODE) {
-    Tensor softmax = ff.softmax(dense, -1);
-    // output = ff.beam_top_k(softmax, mixtral_config.max_beam_width, false);
-    // output = ff.argmax(softmax, /*beam_Search*/ true);
-    output = ff.arg_top_k(softmax, mixtral_config.max_beam_width, false, true);
-    // output = ff.top_k(softmax, )
-  } else {
     // Tensor softmax = ff.softmax(dense, -1);
     if (generation_config.do_sample) {
       dense = ff.scalar_truediv(dense, generation_config.temperature, false);
       Tensor softmax = ff.softmax(dense, -1);
       output = ff.sampling(softmax, generation_config.topp);
     } else {
-      // output = ff.arg_top_k(dense, /*k=*/1, false);
-      output = ff.argmax(dense, /*beam_Search*/ false);
+      Tensor softmax = ff.softmax(dense, -1); // TODO added that to copy llama, see if needed in HF transformers impl.
+      output = ff.argmax(softmax, /*beam_Search*/ false);
     }
-  }
 
   FileDataLoader *fileloader = new FileDataLoader(
       "",
