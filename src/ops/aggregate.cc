@@ -542,45 +542,45 @@ void Aggregate::forward_task(Task const *task,
   Rect<4> rect_output = runtime->get_index_space_domain(
       ctx, task->regions[n + FIXED_ARG_CNT].region.get_index_space());
 //
-//  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
-//  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
-//  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
-//         rect_gate_assign.hi[0] - rect_gate_assign.lo[0]);
-//  assert(batch_size == rect_output.hi[1] - rect_output.lo[1] + 1);
-//  coord_t out_dim = rect_output.hi[0] - rect_output.lo[0] + 1;
+  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
+  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
+  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
+         rect_gate_assign.hi[0] - rect_gate_assign.lo[0]);
+  assert(batch_size == rect_output.hi[1] - rect_output.lo[1] + 1);
+  coord_t out_dim = rect_output.hi[0] - rect_output.lo[0] + 1;
 
 //  // get exp_preds
-//  float *exp_preds[n];
-//  // get first exp_pred and row and out_dim
-//  Domain exp_domain = runtime->get_index_space_domain(
-//      ctx, task->regions[FIXED_ARG_CNT].region.get_index_space());
-//  exp_preds[0] = helperGetTensorPointerWO<float>(regions[FIXED_ARG_CNT], task->regions[FIXED_ARG_CNT], FID_DATA, ctx, runtime);
-//  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
-//  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+  float *exp_preds[n];
+  // get first exp_pred and row and out_dim
+  Domain exp_domain = runtime->get_index_space_domain(
+      ctx, task->regions[FIXED_ARG_CNT].region.get_index_space());
+  exp_preds[0] = helperGetTensorPointerWO<float>(regions[FIXED_ARG_CNT], task->regions[FIXED_ARG_CNT], FID_DATA, ctx, runtime);
+  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
+  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
 //
-//  for (int i = 1; i < n; i++) {
-//    exp_domain = runtime->get_index_space_domain(
-//        ctx, task->regions[i + FIXED_ARG_CNT].region.get_index_space());
-//    exp_preds[i] = helperGetTensorPointerWO<float>(
-//        regions[i + FIXED_ARG_CNT], task->regions[i + FIXED_ARG_CNT], FID_DATA, ctx, runtime);
+  for (int i = 1; i < n; i++) {
+    exp_domain = runtime->get_index_space_domain(
+        ctx, task->regions[i + FIXED_ARG_CNT].region.get_index_space());
+    exp_preds[i] = helperGetTensorPointerWO<float>(
+        regions[i + FIXED_ARG_CNT], task->regions[i + FIXED_ARG_CNT], FID_DATA, ctx, runtime);
 //
-//    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
-//    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
+    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
 //  }
 //
-//  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
+  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
-//  Aggregate::forward_kernel_wrapper(m,
-//                                    bc,
-//                                    exp_preds,
-//                                    acc_gate_assign.ptr(rect_gate_assign),
-//                                    acc_gate_pred.ptr(rect_gate_pred),
-//                                    acc_output.ptr(rect_output),
-//                                    n,
-//                                    k,
-//                                    rows,
-//                                    batch_size,
-//                                    out_dim);
+  Aggregate::forward_kernel_wrapper(m,
+                                    bc,
+                                    exp_preds,
+                                    acc_gate_assign.ptr(rect_gate_assign),
+                                    acc_gate_pred.ptr(rect_gate_pred),
+                                    acc_output.ptr(rect_output),
+                                    n,
+                                    k,
+                                    rows,
+                                    batch_size,
+                                    out_dim);
 }
 
 // TODO HL copied forward_task. Can we just do that?
