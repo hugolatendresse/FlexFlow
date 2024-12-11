@@ -71,6 +71,8 @@ void FFModel::residual_rms_norm(const Tensor input1,
                                 bool inplace_residual,
                                 DataType data_type,
                                 char const *name) {
+  printf("input2 address: %p\n", input2);
+
   if (data_type == DT_NONE) {
     data_type = input1->data_type;
   }
