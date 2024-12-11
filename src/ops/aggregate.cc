@@ -194,8 +194,10 @@ Aggregate::Aggregate(FFModel &model,
   topk_values_last_dim.parallel_idx = -1;
   topk_values_last_dim.is_replica_dim = false;
 
-  dims[num_dim - 2] = topk_values_penultimate_dim;
-  dims[num_dim - 1] = topk_values_last_dim;
+  // TODO this is all debugging stuff. Need to set for real
+  dims[num_dim - 3] = topk_values_penultimate_dim;
+  dims[num_dim - 2] = topk_values_last_dim;
+  dims[num_dim - 1] = inputs[FIXED_ARG_CNT]->dims[num_dim - 1];
   numOutputs = 1;
   outputs[0] = model.create_parallel_tensor_legion_ordering(
       num_dim, dims, DT_FLOAT, this);
