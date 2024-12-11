@@ -530,17 +530,19 @@ void Aggregate::forward_task(Task const *task,
 
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 
+  int n = 6; // TODO remove magic number
+
   // get gate_pred, gate_assign, output
   AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
   AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
-  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA);
+  AccessorWO<float, 3> const acc_output(regions[n + FIXED_ARG_CNT], FID_DATA);
 
   Rect<3> rect_gate_pred = runtime->get_index_space_domain(
       ctx, task->regions[0].region.get_index_space());
   Rect<3> rect_gate_assign = runtime->get_index_space_domain(
       ctx, task->regions[1].region.get_index_space());
   Rect<3> rect_output = runtime->get_index_space_domain(
-      ctx, task->regions[n + 2].region.get_index_space());
+      ctx, task->regions[n + FIXED_ARG_CNT].region.get_index_space());
 
   coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
   assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
@@ -553,17 +555,16 @@ void Aggregate::forward_task(Task const *task,
   float *exp_preds[n];
   // get first exp_pred and row and out_dim
   Domain exp_domain = runtime->get_index_space_domain(
-      ctx, task->regions[2].region.get_index_space());
-  exp_preds[0] = helperGetTensorPointerWO<float>(
-      regions[2], task->regions[2], FID_DATA, ctx, runtime);
+      ctx, task->regions[FIXED_ARG_CNT].region.get_index_space());
+  exp_preds[0] = helperGetTensorPointerWO<float>(regions[FIXED_ARG_CNT], task->regions[FIXED_ARG_CNT], FID_DATA, ctx, runtime);
   coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
   assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
 
   for (int i = 1; i < n; i++) {
     exp_domain = runtime->get_index_space_domain(
-        ctx, task->regions[i + 2].region.get_index_space());
+        ctx, task->regions[i + FIXED_ARG_CNT].region.get_index_space());
     exp_preds[i] = helperGetTensorPointerWO<float>(
-        regions[i + 2], task->regions[i + 2], FID_DATA, ctx, runtime);
+        regions[i + FIXED_ARG_CNT], task->regions[i + FIXED_ARG_CNT], FID_DATA, ctx, runtime);
 
     assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
     assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
