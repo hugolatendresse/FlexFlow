@@ -201,6 +201,7 @@ __global__ void agg_backward_kernel(float **exp_preds,
 
 /*static*/
 void Aggregate::forward_kernel_wrapper(AggregateMeta const *m,
+                                       BatchConfig bc,
                                        float **exp_preds,
                                        int const *acc_gate_assign_ptr,
                                        float const *acc_gate_pred_ptr,
