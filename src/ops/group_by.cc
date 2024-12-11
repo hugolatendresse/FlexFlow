@@ -167,7 +167,7 @@ Group_by::Group_by(FFModel &model,
 
   // dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
   // MK why is this - 2 instead of - 1? Also, why no alpha?
-  printf("groupby op output: %d %d %d %d %d\n", dims[0], dims[1], dims[2], dims[3];)
+  printf("groupby op output: %d %d %d %d %d\n", dims[0], dims[1], dims[2], dims[3], dims[4]);
   if (alpha != 0.0f) {
 //      int seq_len = input->dims[num_dims - 1];
       dims[num_dims - 1].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size);
