@@ -363,7 +363,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         -1,
         DT_NONE,
         std::string("layers." + std::to_string(i) + ".dummy")
-
             .c_str());
 
     aggregate_inputs[0] = topk_values;
