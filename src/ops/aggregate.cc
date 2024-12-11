@@ -264,7 +264,7 @@ void Aggregate::init_inference(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
-  // gate_preds
+  // add region for gate_preds
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_WRITE,
@@ -464,7 +464,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
                          0 /*mapper_id*/,
                          machine_view_hash);
   launcher.add_future(bc);
-  // gate_preds
+  // add region for gate_preds
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_WRITE,
@@ -531,7 +531,7 @@ void Aggregate::forward_task(Task const *task,
   int n = 6; // TODO remove magic number
 //
 //  // get gate_pred, gate_assign, output
-  AccessorRW<float, 3> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch
+  AccessorRW<float, 4> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch
 //  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
 //  AccessorWO<float, 3> const acc_output(regions[n + FIXED_ARG_CNT], FID_DATA);
 
