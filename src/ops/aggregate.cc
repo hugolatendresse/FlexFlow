@@ -535,12 +535,12 @@ void Aggregate::forward_task(Task const *task,
   AccessorRO<int, 4> const acc_gate_assign(regions[1], FID_DATA);
   AccessorWO<float, 4> const acc_output(regions[n + FIXED_ARG_CNT], FID_DATA);
 
-//  Rect<3> rect_gate_pred = runtime->get_index_space_domain(
-//      ctx, task->regions[0].region.get_index_space());
-//  Rect<3> rect_gate_assign = runtime->get_index_space_domain(
-//      ctx, task->regions[1].region.get_index_space());
-//  Rect<3> rect_output = runtime->get_index_space_domain(
-//      ctx, task->regions[n + FIXED_ARG_CNT].region.get_index_space());
+  Rect<4> rect_gate_pred = runtime->get_index_space_domain(
+      ctx, task->regions[0].region.get_index_space());
+  Rect<4> rect_gate_assign = runtime->get_index_space_domain(
+      ctx, task->regions[1].region.get_index_space());
+  Rect<4> rect_output = runtime->get_index_space_domain(
+      ctx, task->regions[n + FIXED_ARG_CNT].region.get_index_space());
 //
 //  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
 //  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
