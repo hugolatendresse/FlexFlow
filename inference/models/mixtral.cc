@@ -70,7 +70,6 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
   Tensor mlp_out = nullptr;
 
-//  for (int i = 0; i < 2; i++) {  // TODO restore all layers
   for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
     dbg_printf("mixtral hidden layer %d\n", i);
 
@@ -93,13 +92,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //      printf("before first rms norm in layer %d mlp_out has %d dims\n",i, token->num_dims);
 //      printf("before first rms norm in layer %d token dims are %d %d %d %d\n",i, token->dims[0], token->dims[1], token->dims[2], token->dims[3]);
 //      printf("before first rms norm in layer %d, mlp_out dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
-
-//		printf("token address: %p\n", token);
-//		printf("mlp_out address: %p\n", mlp_out); // TODO able to print at a breakpoint, but won't print otherwise
-//		Tensor local_mlp_out = mlp_out;
-//		printf("local_mlp_out address: %p\n", local_mlp_out);
-
-		ff.residual_rms_norm( // TODO this op has an mlp_out tensor of (1024,1,1) dim for some reason
+	  ff.residual_rms_norm(
           token, //  (1024, 1, 128) confirmed 3 dims
           mlp_out, //  (1024, 1, 128) confirmed 3 dims
           token_att_norm,
@@ -257,8 +250,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
             .c_str());
 
     Tensor topk_out[2] = {nullptr, nullptr};
-//    printf("gate data_type %d\n", gate->data_type);
-    ff.top_k( // TODO the topk_out[0] ParallelTensor output has 4 dims instead of 3. Understand why
+
+    ff.top_k(
         gate, // (num_experts, 1, 128)
         topk_out,
         mixtral_config.num_experts_per_tok,
@@ -349,7 +342,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
       aggregate_inputs[4 + expert_idx] = w2;
     }
 
-    // TODO uncomment, but is a nice-to-have at this point
+    // TODO uncomment, but is a nice-to-have at this point.. or try normalizing with softmax????
 //    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true);
 //    topk_values = ff.divide(topk_values, topk_values_reduced);
 
