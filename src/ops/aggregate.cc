@@ -617,17 +617,17 @@ void Aggregate::inference_task(Task const *task,
   printf("CALLING FOWARD_KERNEL_WRAPPER IN INFERENCE_TASK\n");
 
   // TODO should we have an inference_kernel wrapper?
-  Aggregate::forward_kernel_wrapper(m,
-                                    bc,
-                                    exp_preds,
-                                    acc_gate_assign.ptr(rect_gate_assign),
-                                    acc_gate_pred.ptr(rect_gate_pred),
-                                    acc_output.ptr(rect_output),
-                                    n,
-                                    k,
-                                    rows,
-                                    batch_size,
-                                    out_dim);
+//  Aggregate::forward_kernel_wrapper(m,
+//                                    bc,
+//                                    exp_preds,
+//                                    acc_gate_assign.ptr(rect_gate_assign),
+//                                    acc_gate_pred.ptr(rect_gate_pred),
+//                                    acc_output.ptr(rect_output),
+//                                    n,
+//                                    k,
+//                                    rows,
+//                                    batch_size,
+//                                    out_dim);
 }
 
 
