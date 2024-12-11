@@ -473,6 +473,22 @@ FutureMap Aggregate::inference(FFModel const &ff,
                                                     EXCLUSIVE,
                                                     batch_inputs[1]->region));
   launcher.add_field(1, FID_DATA);
+
+
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[2]->part,
+                                              0 /*projection id*/,
+                                              READ_WRITE,
+                                              EXCLUSIVE,
+                                              batch_inputs[2]->region));
+  launcher.add_field(2, FID_DATA);
+
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[3]->part,
+                                                  0 /*projection id*/,
+                                                  READ_WRITE,
+                                                  EXCLUSIVE,
+                                                  batch_inputs[3]->region));
+  launcher.add_field(3, FID_DATA);
+
   // exp_preds
   for (int i = 0; i < n; i++) {
     launcher.add_region_requirement(
