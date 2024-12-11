@@ -311,6 +311,7 @@ void Aggregate::init_inference(FFModel const &ff,
 //  launcher.add_field(n + 4, FID_DATA);
   launcher.add_field(4, FID_DATA); // TODO undo when I do experts again
 
+
   FutureMap fm = runtime->execute_index_space(ctx, launcher);
   fm.wait_all_results();
   set_opmeta_from_futuremap_inference(ff, fm, batch_outputs[0]);
