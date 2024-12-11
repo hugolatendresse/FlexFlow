@@ -347,9 +347,9 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true);
 //    topk_values = ff.divide(topk_values, topk_values_reduced);
 
-    mlp_out = aggregate_inputs[5]; // TODO don't use only one expert
+//    mlp_out = aggregate_inputs[5]; // TODO don't use only one expert
 
-// Everything below is needed to run test and use aggregate
+// Everything below is needed to use aggregate // TODO try not needing the _dummy stuff
 
     Tensor topk_values_DUMMY = ff.softmax(
         topk_values,
@@ -371,14 +371,12 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
     aggregate_inputs[3] = gate_DUMMY;
 //
     mlp_out = ff.aggregate(aggregate_inputs,
-//    Tensor mlp_out2 = ff.aggregate(aggregate_inputs,
                            mixtral_config.num_local_experts,
                            0.0f,
                            std::string("layers." + std::to_string(i) +
                                        ".block_sparse_moe_experts_aggregate")
                                .c_str());
 
-  // mlp_out has dimensions (hidden_size, 1, 128)
 //  printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
   assert(mlp_out->dims[0] == mixtral_config.hidden_size && "mlp_out dims[0] != hidden_size");
   assert(mlp_out->dims[1] == 1 && "mlp_out dims[1] != 1");
