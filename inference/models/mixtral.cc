@@ -79,7 +79,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     // step 1: attention
     Tensor att_norm = nullptr;
-    Tensor token_att_norm[2] = {nullptr, nullptr};n
+    Tensor token_att_norm[2] = {nullptr, nullptr};
     if (i == 0) {
       att_norm = ff.rms_norm(
           token,
