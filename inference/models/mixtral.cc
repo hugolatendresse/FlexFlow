@@ -70,7 +70,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
   Tensor mlp_out = nullptr;
 
-  for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
+  for (int i = 0; i < 2; i++) {  // TODO restore all layers
+//  for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
     dbg_printf("mixtral hidden layer %d\n", i);
 
     // set transformer layer id
@@ -284,8 +285,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
-    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
-         expert_idx++) {
+    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts; expert_idx++) {
       grouped_tokens[expert_idx] = ff_norm; // TODO this is a dirty fix. Restore using group_by!
       Tensor w1 = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
                            mixtral_config.intermediate_size,

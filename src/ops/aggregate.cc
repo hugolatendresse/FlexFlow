@@ -527,16 +527,16 @@ void Aggregate::forward_task(Task const *task,
 //  if (bc->num_tokens == 0) {
 //    return;
 //  }
-  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
-
-  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
-
-  int n = 6; // TODO remove magic number
-
-  // get gate_pred, gate_assign, output
-  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
-  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
-  AccessorWO<float, 3> const acc_output(regions[n + FIXED_ARG_CNT], FID_DATA);
+//  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
+//
+//  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
+//
+//  int n = 6; // TODO remove magic number
+//
+//  // get gate_pred, gate_assign, output
+//  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
+//  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
+//  AccessorWO<float, 3> const acc_output(regions[n + FIXED_ARG_CNT], FID_DATA);
 
 //  Rect<3> rect_gate_pred = runtime->get_index_space_domain(
 //      ctx, task->regions[0].region.get_index_space());
