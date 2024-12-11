@@ -351,25 +351,25 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
 // Everything below is needed to run test and use aggregate
 
-//    Tensor topk_values_DUMMY = ff.softmax(
-//        topk_values,
-//        -1,
-//        DT_NONE,
-//        std::string("layers." + std::to_string(i) + ".dummy2")
-//            .c_str());
+    Tensor topk_values_DUMMY = ff.softmax(
+        topk_values,
+        -1,
+        DT_NONE,
+        std::string("layers." + std::to_string(i) + ".dummy2")
+            .c_str());
 
-//    Tensor gate_DUMMY = ff.softmax(
-//        gate, // (num_experts, 1, 128)
-//        -1,
-//        DT_NONE,
-//        std::string("layers." + std::to_string(i) + ".dummy")
-//
-//            .c_str());
-//
-//    aggregate_inputs[0] = topk_values;
-//    aggregate_inputs[1] = topk_indices;
-//    aggregate_inputs[2] = topk_values_DUMMY; // TODO Causes Legion runtime error!!
-//    aggregate_inputs[3] = gate_DUMMY;
+    Tensor gate_DUMMY = ff.softmax(
+        gate, // (num_experts, 1, 128)
+        -1,
+        DT_NONE,
+        std::string("layers." + std::to_string(i) + ".dummy")
+
+            .c_str());
+
+    aggregate_inputs[0] = topk_values;
+    aggregate_inputs[1] = topk_indices;
+    aggregate_inputs[2] = topk_values_DUMMY;
+    aggregate_inputs[3] = gate_DUMMY;
 //
 //    mlp_out = ff.aggregate(aggregate_inputs,
 //    Tensor mlp_out2 = ff.aggregate(aggregate_inputs,
