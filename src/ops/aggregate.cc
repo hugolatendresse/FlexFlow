@@ -617,6 +617,7 @@ void Aggregate::inference_task(Task const *task,
   printf("CALLING FOWARD_KERNEL_WRAPPER IN INFERENCE_TASK\n");
 
   // TODO should we have an inference_kernel wrapper?
+  assert(false && "No kernel call right now!");
 //  Aggregate::forward_kernel_wrapper(m,
 //                                    bc,
 //                                    exp_preds,
@@ -629,7 +630,6 @@ void Aggregate::inference_task(Task const *task,
 //                                    batch_size,
 //                                    out_dim);
 }
-
 
 void Aggregate::backward(FFModel const &ff) {
 //  ArgumentMap argmap;
