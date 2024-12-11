@@ -523,7 +523,6 @@ void Aggregate::forward_task(Task const *task,
   // TODO in the end, create and place our changes in Aggregate::inference_task
 //  printf("running Aggregate::forward_task\n");
 
-
   // TODO I commented out try to debug legion errors, but need to uncomment
 //  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
 //  if (bc->num_tokens == 0) {
