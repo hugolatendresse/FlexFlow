@@ -566,7 +566,7 @@ void Aggregate::forward_task(Task const *task,
 //
     assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
     assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-//  }
+  }
 //
   int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
