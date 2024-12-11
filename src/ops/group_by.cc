@@ -756,8 +756,8 @@ size_t hash<FlexFlow::Group_byParams>::operator()(
     FlexFlow::Group_byParams const &params) const {
   size_t key = 0;
   hash_combine(key, params.layer_guid.id);
-  hash_combine(key, params.layer_guid.transformer_layer_id);
-  hash_combine(key, params.layer_guid.model_id);
+  // hash_combine(key, params.layer_guid.transformer_layer_id);
+  // hash_combine(key, params.layer_guid.model_id);
   hash_combine(key, params.n);
   hash_combine(key, params.alpha);
   return key;
