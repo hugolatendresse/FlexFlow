@@ -37,7 +37,6 @@ __global__ void
 
   // Get pred pointers, single thread per block
   if (threadIdx.x == 0) {
-    printf("ENTERED KERNEL");
     int exp_tensor_rows = ceil(alpha * k / n * batch_size);
     int expert_idx[MAX_N] = {0};
     for (int i = 0; i < k * batch_size; i++) {
@@ -59,9 +58,10 @@ __global__ void
   CUDA_KERNEL_LOOP(i, k * batch_size * data_dim) {
     if (chosen_exp_preds[i / data_dim] != 0) {
       float a = input[(i / (k * data_dim)) * data_dim + i % data_dim];
-      chosen_exp_preds[i / data_dim][i % data_dim] = a;
+      outputs[i / data_dim][i % data_dim] = a; // MK Changed from shared buff to output assignment
     }
   }
+
 }
 
 __global__ void
