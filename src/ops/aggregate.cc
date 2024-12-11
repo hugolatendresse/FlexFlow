@@ -294,22 +294,22 @@ void Aggregate::init_inference(FFModel const &ff,
   launcher.add_field(3, FID_DATA);
 
   // exp_preds
-//  for (int i = 0; i < n; i++) {
-//    launcher.add_region_requirement(RegionRequirement(batch_inputs[i + 4]->part,
-//                                    0 /*projection id*/,
-//                                    READ_WRITE,
-//                                    EXCLUSIVE,
-//                                    batch_inputs[i + 4]->region));
-//    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
-//  }
+  for (int i = 0; i < n; i++) {
+    launcher.add_region_requirement(RegionRequirement(batch_inputs[i + FIXED_ARG_CNT]->part,
+                                    0 /*projection id*/,
+                                    READ_WRITE,
+                                    EXCLUSIVE,
+                                    batch_inputs[i + FIXED_ARG_CNT]->region));
+    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
+  }
   // output
   launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
                                                     0 /*projection id*/,
                                                     WRITE_ONLY,
                                                     EXCLUSIVE,
                                                     batch_outputs[0]->region));
-//  launcher.add_field(n + 4, FID_DATA);
-  launcher.add_field(4, FID_DATA); // TODO undo when I do experts again
+  launcher.add_field(n + FIXED_ARG_CNT, FID_DATA);
+//  launcher.add_field(FIXED_ARG_CNT, FID_DATA); // TODO undo when I do experts again
 
 
   FutureMap fm = runtime->execute_index_space(ctx, launcher);
