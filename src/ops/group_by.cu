@@ -37,6 +37,7 @@ __global__ void
 
   // Get pred pointers, single thread per block
   if (threadIdx.x == 0) {
+    printf("ENTERED KERNEL");
     int exp_tensor_rows = ceil(alpha * k / n * batch_size);
     int expert_idx[MAX_N] = {0};
     for (int i = 0; i < k * batch_size; i++) {
