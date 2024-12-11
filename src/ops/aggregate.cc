@@ -516,6 +516,8 @@ void Aggregate::forward_task(Task const *task,
   // TODO in the end, create and place our changes in Aggregate::inference_task
 //  printf("running Aggregate::forward_task\n");
 
+
+  // TODO I commented out try to debug legion errors, but need to uncomment
 //  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
 //  if (bc->num_tokens == 0) {
 //    return;
@@ -523,7 +525,6 @@ void Aggregate::forward_task(Task const *task,
 //
 //  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 //
-//  // TODO block below causes aliasing error
 //  int total_input_cnt = 10; // TODO remove magic number
 //  GenericTensorAccessorR inputs[total_input_cnt];
 //  // 10 input types are defined, and 10 regions are defined
