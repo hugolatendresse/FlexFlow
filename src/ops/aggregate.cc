@@ -537,13 +537,13 @@ void Aggregate::forward_task(Task const *task,
   //assert(regions.size() == task->regions.size());
   //int n = regions.size() - 3;
 
-  Domain input_domains[total_input_cnt];
-  for (int i = 0; i < total_input_cnt; i++) {
-    input_domains[i] = runtime->get_index_space_domain(
-        ctx, task->regions[i].region.get_index_space());
-  }
-  Domain output_domain = runtime->get_index_space_domain(
-      ctx, task->regions[total_input_cnt].region.get_index_space());
+//  Domain input_domains[total_input_cnt];
+//  for (int i = 0; i < total_input_cnt; i++) {
+//    input_domains[i] = runtime->get_index_space_domain(
+//        ctx, task->regions[i].region.get_index_space());
+//  }
+//  Domain output_domain = runtime->get_index_space_domain(
+//      ctx, task->regions[total_input_cnt].region.get_index_space());
 
   // TODO!
 //  Aggregate::forward_kernel_wrapper(m,
