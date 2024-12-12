@@ -530,7 +530,7 @@ void Aggregate::forward_task(Task const *task,
 //
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 //
-  int n = regions.size() - FIXED_ARG_CNT;
+  int n = regions.size() - FIXED_ARG_CNT - 1; // Last region is for the output
 //
 //  // get gate_pred, gate_assign, output
   AccessorRW<float, 4> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch
