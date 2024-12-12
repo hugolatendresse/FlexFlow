@@ -59,7 +59,7 @@ Tensor FFModel::aggregate(
                         1 /*outputs*/,
                         inputs);
   {
-    assert(n == 6 && "Dirty magic numbers in this script assume n==6");
+    // assert(n == 6 && "Dirty magic numbers in this script assume n==6");
     int num_dim = inputs[FIXED_ARG_CNT]->num_dims;
     // Set output shape
     int dims[MAX_TENSOR_DIM];
@@ -531,7 +531,8 @@ void Aggregate::forward_task(Task const *task,
 //
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 //
-  int n = 6; // TODO remove magic number
+  // int n = 6; // TODO remove magic number
+  int n = regions.size() - FIXED_ARG_CNT;
 //
 //  // get gate_pred, gate_assign, output
   AccessorRW<float, 4> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch
