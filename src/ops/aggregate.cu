@@ -198,13 +198,16 @@ __global__ void agg_backward_kernel(float **exp_preds,
                            out_dim);
 }
 
+
+
+
 /*static*/
 void Aggregate::forward_kernel_wrapper(AggregateMeta const *m,
                                        BatchConfig const *bc,
-                                       float **exp_preds,
-                                       int const *acc_gate_assign_ptr,
-                                       float const *acc_gate_pred_ptr,
-                                       float *acc_output_ptr,
+                                       float **exp_preds, // Was passed like this exp_preds,
+                                       int const *acc_gate_assign_ptr, // Was passed like this acc_gate_assign.ptr(rect_gate_assign),
+                                       float const *acc_gate_pred_ptr,// Was passed like this  acc_gate_pred.ptr(rect_gate_pred),
+                                       float *acc_output_ptr, // Was passed like this acc_output.ptr(rect_output)
                                        int n,
                                        int const k,
                                        int rows,
