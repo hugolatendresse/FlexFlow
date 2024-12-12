@@ -287,10 +287,10 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
     
-    for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
-         expert_idx++) {
+    // for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
+        //  expert_idx++) {
       // grouped_tokens[expert_idx] = ff_norm; // TODO this is a dirty fix. Restore using group_by!
-      Tensor w1 = ff.dense(grouped_tokens[expert_idx],  // (hidden_size, 1, result of calc in groupby)
+      Tensor w1 = ff.dense(grouped_tokens[0],  // (hidden_size, 1, result of calc in groupby)
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
                            false,
@@ -305,7 +305,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                                        std::to_string(expert_idx) + "_w1")
                                .c_str());
 
-      Tensor w3 = ff.dense(grouped_tokens[expert_idx],
+      Tensor w3 = ff.dense(grouped_tokens[0],
                            mixtral_config.intermediate_size,
                            AC_MODE_NONE,
                            false,
@@ -343,8 +343,8 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                                        ".block_sparse_moe_experts_" +
                                        std::to_string(expert_idx) + "_w2")
                                .c_str());
-      aggregate_inputs[4 + expert_idx] = w2;
-    }
+      aggregate_inputs[4 + 0] = w2;
+    // }
 
     // TODO uncomment, but is a nice-to-have at this point.. or try normalizing with softmax????
 //    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true);
