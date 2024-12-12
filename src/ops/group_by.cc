@@ -78,7 +78,7 @@ void FFModel::group_by(const Tensor input,
     } else { // MK: added this for dummy groupby
       dims[num_dims - 1] = 128;
     }
-    printf("ff.groupby output: %d %d %d %d\n", dims[0], dims[1], dims[2], dims[3]);
+    // printf("ff.groupby output: %d %d %d %d\n", dims[0], dims[1], dims[2], dims[3]);
 
     for (int i = 0; i < num_local_experts; i++) {
       // Creating one tensor per expert, each with size (DATA_DIMS,
@@ -176,7 +176,7 @@ Group_by::Group_by(FFModel &model,
     dims[num_dims - 2].size = 128;
     //dims[num_dims - 2] = 128;
   }
-  printf("groupby op output: %d %d %d %d\n", dims[0].size, dims[1].size, dims[2].size, dims[3].size);
+  // printf("groupby op output: %d %d %d %d\n", dims[0].size, dims[1].size, dims[2].size, dims[3].size);
   // dims[num_dims - 2].size = 128;
 //  printf("max num tokens dim in output used to be %d\n", (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[1].size));
 
