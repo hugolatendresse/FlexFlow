@@ -70,7 +70,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
   Tensor mlp_out = nullptr;
 
-  for (int i = 0; i < mixtral_config.num_hidden_layers; i++) {
+  for (int i = 0; i < 1/*mixtral_config.num_hidden_layers*/; i++) {
     dbg_printf("mixtral hidden layer %d\n", i);
 
     // set transformer layer id
