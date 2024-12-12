@@ -381,7 +381,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //                                        ".block_sparse_moe_experts_aggregate")
 //                                .c_str());
 
-mlp_out = aggregate_inputs[5];
+mlp_out = aggregate_inputs[4];
 //  printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
   assert(mlp_out->dims[0] == mixtral_config.hidden_size && "mlp_out dims[0] != hidden_size");
   assert(mlp_out->dims[1] == 1 && "mlp_out dims[1] != 1");
