@@ -531,7 +531,7 @@ void Aggregate::forward_task(Task const *task,
 //
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 //
-  int n = 6; // TODO remove magic number
+  // int n = 6; // TODO remove magic number
   int n = regions.size() - FIXED_ARG_CNT - 1;
 //
 //  // get gate_pred, gate_assign, output
