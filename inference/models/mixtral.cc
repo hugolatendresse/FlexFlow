@@ -92,7 +92,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 //      printf("before first rms norm in layer %d mlp_out has %d dims\n",i, token->num_dims);
 //      printf("before first rms norm in layer %d token dims are %d %d %d %d\n",i, token->dims[0], token->dims[1], token->dims[2], token->dims[3]);
 //      printf("before first rms norm in layer %d, mlp_out dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
-      ff.residual_rms_norm( // TODO this op has an mlp_out tensor of (1024,1,1) dim for some reason
+	  ff.residual_rms_norm(
           token, //  (1024, 1, 128) confirmed 3 dims
           mlp_out, //  (1024, 1, 128) confirmed 3 dims
           token_att_norm,
@@ -250,7 +250,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
             .c_str());
 
     Tensor topk_out[2] = {nullptr, nullptr};
-    // printf("gate data_type %d\n", gate->data_type);
+
     ff.top_k(
         gate, // (num_experts, 1, 128)
         topk_out,
@@ -284,6 +284,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
 
 
     Tensor aggregate_inputs[4 + mixtral_config.num_local_experts] = {nullptr};
+    
     for (int expert_idx = 0; expert_idx < mixtral_config.num_local_experts;
          expert_idx++) {
       // grouped_tokens[expert_idx] = ff_norm; // TODO this is a dirty fix. Restore using group_by!
@@ -343,48 +344,46 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
       aggregate_inputs[4 + expert_idx] = w2;
     }
 
-    // TODO uncomment, but is a nice-to-have at this point
+    // TODO uncomment, but is a nice-to-have at this point.. or try normalizing with softmax????
 //    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true);
 //    topk_values = ff.divide(topk_values, topk_values_reduced);
 
-    mlp_out = aggregate_inputs[5]; // TODO don't use only one expert
+//    mlp_out = aggregate_inputs[5]; // TODO don't use only one expert
 
-// Everything below is needed to run test and use aggregate
+// Everything below is needed to use aggregate // TODO try not needing the _dummy stuff
 
-//    Tensor topk_values_DUMMY = ff.softmax(
-//        topk_values,
-//        -1,
-//        DT_NONE,
-//        std::string("layers." + std::to_string(i) + ".dummy2")
-//            .c_str());
+    Tensor topk_values_DUMMY = ff.softmax(
+        topk_values,
+        -1,
+        DT_NONE,
+        std::string("layers." + std::to_string(i) + ".dummy2")
+            .c_str());
 
-//    Tensor gate_DUMMY = ff.softmax(
-//        gate, // (num_experts, 1, 128)
-//        -1,
-//        DT_NONE,
-//        std::string("layers." + std::to_string(i) + ".dummy")
+    Tensor gate_DUMMY = ff.softmax(
+        gate, // (num_experts, 1, 128)
+        -1,
+        DT_NONE,
+        std::string("layers." + std::to_string(i) + ".dummy")
+            .c_str());
+
+    aggregate_inputs[0] = topk_values;
+    aggregate_inputs[1] = topk_indices;
+    aggregate_inputs[2] = topk_values_DUMMY;
+    aggregate_inputs[3] = gate_DUMMY;
 //
-//            .c_str());
-//
-//    aggregate_inputs[0] = topk_values;
-//    aggregate_inputs[1] = topk_indices;
-//    aggregate_inputs[2] = topk_values_DUMMY; // TODO Causes Legion runtime error!!
-//    aggregate_inputs[3] = gate_DUMMY;
-//
-//    mlp_out = ff.aggregate(aggregate_inputs,
-//    Tensor mlp_out2 = ff.aggregate(aggregate_inputs,
-//                           mixtral_config.num_local_experts,
-//                           0.0f,
-//                           std::string("layers." + std::to_string(i) +
-//                                       ".block_sparse_moe_experts_aggregate")
-//                               .c_str());
+    mlp_out = ff.aggregate(aggregate_inputs,
+                           mixtral_config.num_local_experts,
+                           0.0f,
+                           std::string("layers." + std::to_string(i) +
+                                       ".block_sparse_moe_experts_aggregate")
+                               .c_str());
 
-  // mlp_out has dimensions (hidden_size, 1, 128)
 //  printf("mlp_out in layer %d dims are %d %d %d %d\n",i, mlp_out->dims[0], mlp_out->dims[1], mlp_out->dims[2], mlp_out->dims[3]);
   assert(mlp_out->dims[0] == mixtral_config.hidden_size && "mlp_out dims[0] != hidden_size");
   assert(mlp_out->dims[1] == 1 && "mlp_out dims[1] != 1");
   assert(mlp_out->dims[2] == 128 && "mlp_out dims[2] != 128");
 //  printf("seq length is now %d\n", mlp_out->dims[2]);
+
 
  }
 

@@ -137,10 +137,10 @@ Aggregate::Aggregate(FFModel &model,
   assert(inputs[2]->num_dims >= 2 + 1);
   assert(inputs[3]->num_dims >= 2 + 1);
 
-  printf("_inputs[0]->dims[2].size = %d\n", _inputs[0]->dims[2].size);
-  printf("_inputs[0]->dims[2].degree = %d\n", _inputs[0]->dims[2].degree);
-  printf("_inputs[0]->dims[2].parallel_idx = %d\n", _inputs[0]->dims[2].parallel_idx);
-  printf("_inputs[0]->dims[2].is_replica_dim = %d\n", _inputs[0]->dims[2].is_replica_dim);
+//  printf("_inputs[0]->dims[2].size = %d\n", _inputs[0]->dims[2].size);
+//  printf("_inputs[0]->dims[2].degree = %d\n", _inputs[0]->dims[2].degree);
+//  printf("_inputs[0]->dims[2].parallel_idx = %d\n", _inputs[0]->dims[2].parallel_idx);
+//  printf("_inputs[0]->dims[2].is_replica_dim = %d\n", _inputs[0]->dims[2].is_replica_dim);
 
 
   // TODO uncomment all those assertions
@@ -194,14 +194,17 @@ Aggregate::Aggregate(FFModel &model,
   topk_values_last_dim.parallel_idx = -1;
   topk_values_last_dim.is_replica_dim = false;
 
-  dims[num_dim - 2] = topk_values_penultimate_dim;
-  dims[num_dim - 1] = topk_values_last_dim;
+  // TODO this is all debugging stuff. Need to set for real
+  dims[num_dim - 3] = topk_values_penultimate_dim;
+  dims[num_dim - 2] = topk_values_last_dim;
+  dims[num_dim - 1] = inputs[FIXED_ARG_CNT]->dims[num_dim - 1];
   numOutputs = 1;
   outputs[0] = model.create_parallel_tensor_legion_ordering(
       num_dim, dims, DT_FLOAT, this);
 
   numWeights = 0;
 }
+
 
 Aggregate::Aggregate(FFModel &model,
                      Aggregate const &other,
@@ -264,7 +267,7 @@ void Aggregate::init_inference(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
-  // gate_preds
+  // add region for gate_preds
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_WRITE,
@@ -295,12 +298,12 @@ void Aggregate::init_inference(FFModel const &ff,
 
   // exp_preds
   for (int i = 0; i < n; i++) {
-    launcher.add_region_requirement(RegionRequirement(batch_inputs[i + 4]->part,
+    launcher.add_region_requirement(RegionRequirement(batch_inputs[i + FIXED_ARG_CNT]->part,
                                     0 /*projection id*/,
                                     READ_WRITE,
                                     EXCLUSIVE,
-                                    batch_inputs[i + 4]->region));
-    launcher.add_field(i + 4, FID_DATA);
+                                    batch_inputs[i + FIXED_ARG_CNT]->region));
+    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
   }
   // output
   launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
@@ -308,7 +311,9 @@ void Aggregate::init_inference(FFModel const &ff,
                                                     WRITE_ONLY,
                                                     EXCLUSIVE,
                                                     batch_outputs[0]->region));
-  launcher.add_field(n + 4, FID_DATA);
+  launcher.add_field(n + FIXED_ARG_CNT, FID_DATA);
+//  launcher.add_field(FIXED_ARG_CNT, FID_DATA); // TODO undo when I do experts again
+
 
   FutureMap fm = runtime->execute_index_space(ctx, launcher);
   fm.wait_all_results();
@@ -422,7 +427,7 @@ void Aggregate::forward(FFModel const &ff) {
                                                       READ_WRITE,
                                                       EXCLUSIVE,
                                                       inputs[i + FIXED_ARG_CNT]->region));
-    launcher.add_field(i + 2, FID_DATA);
+    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
   }
   // output
   launcher.add_region_requirement(RegionRequirement(outputs[0]->part,
@@ -430,7 +435,10 @@ void Aggregate::forward(FFModel const &ff) {
                                                     WRITE_ONLY,
                                                     EXCLUSIVE,
                                                     outputs[0]->region));
-  launcher.add_field(n + 2, FID_DATA);
+//  launcher.add_field(n + 2, FID_DATA);
+  launcher.add_field(n + FIXED_ARG_CNT, FID_DATA); // TODO undo when I do experts again
+
+
   runtime->execute_index_space(ctx, launcher);
 }
 
@@ -459,7 +467,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
                          0 /*mapper_id*/,
                          machine_view_hash);
   launcher.add_future(bc);
-  // gate_preds
+  // add region for gate_preds
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_WRITE,
@@ -473,6 +481,22 @@ FutureMap Aggregate::inference(FFModel const &ff,
                                                     EXCLUSIVE,
                                                     batch_inputs[1]->region));
   launcher.add_field(1, FID_DATA);
+
+
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[2]->part,
+                                              0 /*projection id*/,
+                                              READ_WRITE,
+                                              EXCLUSIVE,
+                                              batch_inputs[2]->region));
+  launcher.add_field(2, FID_DATA);
+
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[3]->part,
+                                                  0 /*projection id*/,
+                                                  READ_WRITE,
+                                                  EXCLUSIVE,
+                                                  batch_inputs[3]->region));
+  launcher.add_field(3, FID_DATA);
+
   // exp_preds
   for (int i = 0; i < n; i++) {
     launcher.add_region_requirement(
@@ -481,7 +505,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
                           READ_WRITE,
                           EXCLUSIVE,
                           batch_inputs[i + FIXED_ARG_CNT]->region));
-    launcher.add_field(i + 2, FID_DATA);
+    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
   }
   // output
   launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
@@ -489,7 +513,9 @@ FutureMap Aggregate::inference(FFModel const &ff,
                                                     WRITE_ONLY,
                                                     EXCLUSIVE,
                                                     batch_outputs[0]->region));
-  launcher.add_field(n + 2, FID_DATA);
+//  launcher.add_field(n + 2, FID_DATA);
+  launcher.add_field(n + FIXED_ARG_CNT, FID_DATA); // TODO undo when I do experts again
+
   return runtime->execute_index_space(ctx, launcher);
 }
 
@@ -499,56 +525,85 @@ void Aggregate::forward_task(Task const *task,
                              Runtime *runtime) {
   // TODO in the end, create and place our changes in Aggregate::inference_task
 //  printf("running Aggregate::forward_task\n");
-
+//
 
   BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
-  if (bc->num_tokens == 0) {
-    return;
-  }
-
+//
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
+//
+  int n = 6; // TODO remove magic number
+//
+//  // get gate_pred, gate_assign, output
+  AccessorRW<float, 4> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch
+  AccessorRO<int, 4> const acc_gate_assign(regions[1], FID_DATA);
+  AccessorWO<float, 4> const acc_output(regions[n + FIXED_ARG_CNT], FID_DATA);
 
-  // TODO block below causes aliasing error
-  int total_input_cnt = 10; // TODO remove magic number
-  GenericTensorAccessorR inputs[total_input_cnt];
-  // 10 input types are defined, and 10 regions are defined
-  for (int i = 0; i < total_input_cnt; i++) {
-      inputs[i] = helperGetGenericTensorAccessorRO(
-          m->input_type[i], regions[i], task->regions[i], FID_DATA, ctx, runtime);
+  Rect<4> rect_gate_pred = runtime->get_index_space_domain(
+      ctx, task->regions[0].region.get_index_space());
+  Rect<4> rect_gate_assign = runtime->get_index_space_domain(
+      ctx, task->regions[1].region.get_index_space());
+  Rect<4> rect_output = runtime->get_index_space_domain(
+      ctx, task->regions[n + FIXED_ARG_CNT].region.get_index_space());
+//
+  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
+  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
+  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
+         rect_gate_assign.hi[0] - rect_gate_assign.lo[0]);
+  assert(batch_size == rect_output.hi[1] - rect_output.lo[1] + 1);
+  coord_t out_dim = rect_output.hi[0] - rect_output.lo[0] + 1;
+
+//  // get exp_preds
+  float *exp_preds[n];
+  // get first exp_pred and row and out_dim
+  Domain exp_domain = runtime->get_index_space_domain(
+      ctx, task->regions[FIXED_ARG_CNT].region.get_index_space());
+  exp_preds[0] = helperGetTensorPointerWO<float>(regions[FIXED_ARG_CNT], task->regions[FIXED_ARG_CNT], FID_DATA, ctx, runtime);
+  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
+  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+//
+  for (int i = 1; i < n; i++) {
+    exp_domain = runtime->get_index_space_domain(
+        ctx, task->regions[i + FIXED_ARG_CNT].region.get_index_space());
+    exp_preds[i] = helperGetTensorPointerWO<float>(
+        regions[i + FIXED_ARG_CNT], task->regions[i + FIXED_ARG_CNT], FID_DATA, ctx, runtime);
+//
+    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
+    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
   }
-  GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
-      m->output_type[0], regions[total_input_cnt], task->regions[total_input_cnt], FID_DATA, ctx, runtime);
+//
+  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
-  //assert(regions.size() == task->regions.size());
-  //int n = regions.size() - 3;
+  Aggregate::forward_kernel_wrapper(m,
+                                    bc,
+                                    exp_preds,
+                                    acc_gate_assign.ptr(rect_gate_assign),
+                                    acc_gate_pred.ptr(rect_gate_pred),
+                                    acc_output.ptr(rect_output),
+                                    n,
+                                    k,
+                                    rows,
+                                    batch_size,
+                                    out_dim);
+}
 
-  Domain input_domains[total_input_cnt];
-  for (int i = 0; i < total_input_cnt; i++) {
-    input_domains[i] = runtime->get_index_space_domain(
-        ctx, task->regions[i].region.get_index_space());
-  }
-  Domain output_domain = runtime->get_index_space_domain(
-      ctx, task->regions[total_input_cnt].region.get_index_space());
+// TODO HL copied forward_task. Can we just do that?
+void Aggregate::inference_task(Task const *task,
+                             std::vector<PhysicalRegion> const &regions,
+                             Context ctx,
+                             Runtime *runtime) {
+  // TODO inference_task is never called, need to register it
+  assert(false && "Aggregate::inference_task needed after all!");
 
-  // TODO!
-//  Aggregate::forward_kernel_wrapper(m,
-//                                    bc,
-//                                    exp_preds,
-//                                    acc_gate_assign.ptr(rect_gate_assign),
-//                                    acc_gate_pred.ptr(rect_gate_pred),
-//                                    acc_output.ptr(rect_output),
-//                                    n,
-//                                    k,
-//                                    rows,
-//                                    batch_size,
-//                                    out_dim);
-
-  // TODO One of those three linese cause the mismatch error
-  // get gate_pred, gate_assign, output
-  //AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA); // This one alone does cause the problem
+//  assert(regions.size() == task->regions.size());
+//  int n = regions.size() - 3;
+//
+//  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
+//
+//  // get gate_pred, gate_assign, output
+//  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
 //  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
-//  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA); // This one alone also causes the problem
-
+//  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA);
+//
 //  Rect<3> rect_gate_pred = runtime->get_index_space_domain(
 //      ctx, task->regions[0].region.get_index_space());
 //  Rect<3> rect_gate_assign = runtime->get_index_space_domain(
@@ -556,7 +611,6 @@ void Aggregate::forward_task(Task const *task,
 //  Rect<3> rect_output = runtime->get_index_space_domain(
 //      ctx, task->regions[n + 2].region.get_index_space());
 //
-
 //  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
 //  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
 //  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
@@ -585,80 +639,11 @@ void Aggregate::forward_task(Task const *task,
 //  }
 //
 //  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
-
-//  printf("CALLING FOWARD_KERNEL_WRAPPER IN FORWARD_TASK\n");
-
-  // From ZJ: we lose shape of tensors when we do this approach. Appraoch in sigmoid silu is recommended
-//  Aggregate::forward_kernel_wrapper(m,
-//                                    exp_preds,
-//                                    acc_gate_assign.ptr(rect_gate_assign),
-//                                    acc_gate_pred.ptr(rect_gate_pred),
-//                                    acc_output.ptr(rect_output),
-//                                    n,
-//                                    k,
-//                                    rows,
-//                                    batch_size,
-//                                    out_dim);
-}
-
-// TODO HL copied forward_task. Can we just do that?
-void Aggregate::inference_task(Task const *task,
-                             std::vector<PhysicalRegion> const &regions,
-                             Context ctx,
-                             Runtime *runtime) {
-  // TODO inference_task is never called, need to register it
-  assert(false && "Aggregate::inference_task needed after all!");
-
-  assert(regions.size() == task->regions.size());
-  int n = regions.size() - 3;
-
-  AggregateMeta const *m = *((AggregateMeta **)task->local_args);
-
-  // get gate_pred, gate_assign, output
-  AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA);
-  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
-  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA);
-
-  Rect<3> rect_gate_pred = runtime->get_index_space_domain(
-      ctx, task->regions[0].region.get_index_space());
-  Rect<3> rect_gate_assign = runtime->get_index_space_domain(
-      ctx, task->regions[1].region.get_index_space());
-  Rect<3> rect_output = runtime->get_index_space_domain(
-      ctx, task->regions[n + 2].region.get_index_space());
-
-  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
-  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
-  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
-         rect_gate_assign.hi[0] - rect_gate_assign.lo[0]);
-  assert(batch_size == rect_output.hi[1] - rect_output.lo[1] + 1);
-  coord_t out_dim = rect_output.hi[0] - rect_output.lo[0] + 1;
-
-  // get exp_preds
-  float *exp_preds[n];
-  // get first exp_pred and row and out_dim
-  Domain exp_domain = runtime->get_index_space_domain(
-      ctx, task->regions[2].region.get_index_space());
-  exp_preds[0] = helperGetTensorPointerWO<float>(
-      regions[2], task->regions[2], FID_DATA, ctx, runtime);
-  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
-  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-
-  for (int i = 1; i < n; i++) {
-    exp_domain = runtime->get_index_space_domain(
-        ctx, task->regions[i + 2].region.get_index_space());
-    exp_preds[i] = helperGetTensorPointerWO<float>(
-        regions[i + 2], task->regions[i + 2], FID_DATA, ctx, runtime);
-
-    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
-    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-  }
-
-  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
-
-  printf("CALLING FOWARD_KERNEL_WRAPPER IN INFERENCE_TASK\n");
-
-  // TODO should we have an inference_kernel wrapper?
-  assert(false && "No kernel call right now!");
+//
+//  printf("CALLING FOWARD_KERNEL_WRAPPER IN INFERENCE_TASK\n");
+//
+//  // TODO should we have an inference_kernel wrapper?
+//  assert(false && "No kernel call right now!");
 //  Aggregate::forward_kernel_wrapper(m,
 //                                    bc,
 //                                    exp_preds,
@@ -720,7 +705,7 @@ void Aggregate::backward(FFModel const &ff) {
 //                                                      READ_WRITE,
 //                                                      EXCLUSIVE,
 //                                                      inputs[i + 4]->region));
-//    launcher.add_field(i + 4, FID_DATA);
+//    launcher.add_field(i + FIXED_ARG_CNT, FID_DATA);
 //  }
 //  // exp_preds gradients
 //  for (int i = 0; i < n; i++) {
@@ -729,7 +714,7 @@ void Aggregate::backward(FFModel const &ff) {
 //                          READ_WRITE,
 //                          EXCLUSIVE,
 //                          inputs[i + 4]->region_grad));
-//    launcher.add_field(i + n + 4, FID_DATA);
+//    launcher.add_field(i + n + FIXED_ARG_CNT, FID_DATA);
 //  }
 //
 //  // output

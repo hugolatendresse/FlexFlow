@@ -198,6 +198,7 @@ __global__ void agg_backward_kernel(float **exp_preds,
                            out_dim);
 }
 
+
 /*static*/
 void Aggregate::forward_kernel_wrapper(AggregateMeta const *m,
                                        BatchConfig const *bc,
