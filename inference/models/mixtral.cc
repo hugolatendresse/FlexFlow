@@ -45,7 +45,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
   }
 
   std::unordered_map<std::string, Layer *> weights_layers;
-  mixtral_config.num_local_experts = 1;
+  // mixtral_config.num_local_experts = 1;
 
   Tensor input;
   {
