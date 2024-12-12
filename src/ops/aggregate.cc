@@ -194,14 +194,17 @@ Aggregate::Aggregate(FFModel &model,
   topk_values_last_dim.parallel_idx = -1;
   topk_values_last_dim.is_replica_dim = false;
 
-  dims[num_dim - 2] = topk_values_penultimate_dim;
-  dims[num_dim - 1] = topk_values_last_dim;
+  // TODO this is all debugging stuff. Need to set for real
+  dims[num_dim - 3] = topk_values_penultimate_dim;
+  dims[num_dim - 2] = topk_values_last_dim;
+  dims[num_dim - 1] = inputs[FIXED_ARG_CNT]->dims[num_dim - 1];
   numOutputs = 1;
   outputs[0] = model.create_parallel_tensor_legion_ordering(
       num_dim, dims, DT_FLOAT, this);
 
   numWeights = 0;
 }
+
 
 Aggregate::Aggregate(FFModel &model,
                      Aggregate const &other,
@@ -264,7 +267,7 @@ void Aggregate::init_inference(FFModel const &ff,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
-  // gate_preds
+  // add region for gate_preds
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_WRITE,
@@ -464,7 +467,7 @@ FutureMap Aggregate::inference(FFModel const &ff,
                          0 /*mapper_id*/,
                          machine_view_hash);
   launcher.add_future(bc);
-  // gate_preds
+  // add region for gate_preds
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_WRITE,
@@ -522,102 +525,65 @@ void Aggregate::forward_task(Task const *task,
                              Runtime *runtime) {
   // TODO in the end, create and place our changes in Aggregate::inference_task
 //  printf("running Aggregate::forward_task\n");
+//
 
   BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
-  if (bc->num_tokens == 0) {
-    return;
-  }
-
+//
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
-
-  int total_input_cnt = 10; // TODO remove magic number
-  GenericTensorAccessorR inputs[total_input_cnt];
-  // 10 input types are defined, and 10 regions are defined
-  for (int i = 0; i < total_input_cnt; i++) {
-      inputs[i] = helperGetGenericTensorAccessorRO(
-          m->input_type[i], regions[i], task->regions[i], FID_DATA, ctx, runtime);
-  }
-  GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
-      m->output_type[0], regions[total_input_cnt], task->regions[total_input_cnt], FID_DATA, ctx, runtime);
-
-  //assert(regions.size() == task->regions.size());
-  //int n = regions.size() - 3;
-
-  Domain input_domains[total_input_cnt];
-  for (int i = 0; i < total_input_cnt; i++) {
-    input_domains[i] = runtime->get_index_space_domain(
-        ctx, task->regions[i].region.get_index_space());
-  }
-  Domain output_domain = runtime->get_index_space_domain(
-      ctx, task->regions[total_input_cnt].region.get_index_space());
-
-  // TODO fix this call + update aggregate.cu!!
-//  Aggregate::forward_kernel_wrapper(m,
-//                                    bc,
-//                                    inputs
-//                                    6, // TODO remove magic number (numExperts)
-//                                    2, // TODO remove magic number, I ASSUME k_experts_per_tok
-//                                    rows,
-//                                    batch_size,
-//                                    out_dim);
-
-
-  // TODO One of those three linese cause the mismatch error
-  // get gate_pred, gate_assign, output
-  //AccessorRO<float, 3> const acc_gate_pred(regions[0], FID_DATA); // This one alone does cause the problem
-//  AccessorRO<int, 3> const acc_gate_assign(regions[1], FID_DATA);
-//  AccessorWO<float, 3> const acc_output(regions[n + 2], FID_DATA); // This one alone also causes the problem
-
-//  Rect<3> rect_gate_pred = runtime->get_index_space_domain(
-//      ctx, task->regions[0].region.get_index_space());
-//  Rect<3> rect_gate_assign = runtime->get_index_space_domain(
-//      ctx, task->regions[1].region.get_index_space());
-//  Rect<3> rect_output = runtime->get_index_space_domain(
-//      ctx, task->regions[n + 2].region.get_index_space());
 //
-
-//  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
-//  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
-//  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
-//         rect_gate_assign.hi[0] - rect_gate_assign.lo[0]);
-//  assert(batch_size == rect_output.hi[1] - rect_output.lo[1] + 1);
-//  coord_t out_dim = rect_output.hi[0] - rect_output.lo[0] + 1;
+  int n = 6; // TODO remove magic number
 //
+//  // get gate_pred, gate_assign, output
+  AccessorRW<float, 4> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch
+  AccessorRO<int, 4> const acc_gate_assign(regions[1], FID_DATA);
+  AccessorWO<float, 4> const acc_output(regions[n + FIXED_ARG_CNT], FID_DATA);
+
+  Rect<4> rect_gate_pred = runtime->get_index_space_domain(
+      ctx, task->regions[0].region.get_index_space());
+  Rect<4> rect_gate_assign = runtime->get_index_space_domain(
+      ctx, task->regions[1].region.get_index_space());
+  Rect<4> rect_output = runtime->get_index_space_domain(
+      ctx, task->regions[n + FIXED_ARG_CNT].region.get_index_space());
+//
+  coord_t batch_size = rect_gate_pred.hi[1] - rect_gate_pred.lo[1] + 1;
+  assert(batch_size == rect_gate_assign.hi[1] - rect_gate_assign.lo[1] + 1);
+  assert(rect_gate_pred.hi[0] - rect_gate_pred.lo[0] ==
+         rect_gate_assign.hi[0] - rect_gate_assign.lo[0]);
+  assert(batch_size == rect_output.hi[1] - rect_output.lo[1] + 1);
+  coord_t out_dim = rect_output.hi[0] - rect_output.lo[0] + 1;
+
 //  // get exp_preds
-//  float *exp_preds[n];
-//  // get first exp_pred and row and out_dim
-//  Domain exp_domain = runtime->get_index_space_domain(
-//      ctx, task->regions[2].region.get_index_space());
-//  exp_preds[0] = helperGetTensorPointerWO<float>(
-//      regions[2], task->regions[2], FID_DATA, ctx, runtime);
-//  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
-//  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+  float *exp_preds[n];
+  // get first exp_pred and row and out_dim
+  Domain exp_domain = runtime->get_index_space_domain(
+      ctx, task->regions[FIXED_ARG_CNT].region.get_index_space());
+  exp_preds[0] = helperGetTensorPointerWO<float>(regions[FIXED_ARG_CNT], task->regions[FIXED_ARG_CNT], FID_DATA, ctx, runtime);
+  coord_t rows = exp_domain.hi()[1] - exp_domain.lo()[1] + 1;
+  assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
 //
-//  for (int i = 1; i < n; i++) {
-//    exp_domain = runtime->get_index_space_domain(
-//        ctx, task->regions[i + 2].region.get_index_space());
-//    exp_preds[i] = helperGetTensorPointerWO<float>(
-//        regions[i + 2], task->regions[i + 2], FID_DATA, ctx, runtime);
+  for (int i = 1; i < n; i++) {
+    exp_domain = runtime->get_index_space_domain(
+        ctx, task->regions[i + FIXED_ARG_CNT].region.get_index_space());
+    exp_preds[i] = helperGetTensorPointerWO<float>(
+        regions[i + FIXED_ARG_CNT], task->regions[i + FIXED_ARG_CNT], FID_DATA, ctx, runtime);
 //
-//    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
-//    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
-//  }
+    assert(rows == exp_domain.hi()[1] - exp_domain.lo()[1] + 1);
+    assert(out_dim == exp_domain.hi()[0] - exp_domain.lo()[0] + 1);
+  }
 //
-//  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
+  int k = (int)(rect_gate_assign.hi[0] - rect_gate_assign.lo[0] + 1);
 
-//  printf("CALLING FOWARD_KERNEL_WRAPPER IN FORWARD_TASK\n");
-
-  // From ZJ: we lose shape of tensors when we do this approach. Appraoch in sigmoid silu is recommended
-//  Aggregate::forward_kernel_wrapper(m,
-//                                    exp_preds,
-//                                    acc_gate_assign.ptr(rect_gate_assign),
-//                                    acc_gate_pred.ptr(rect_gate_pred),
-//                                    acc_output.ptr(rect_output),
-//                                    n,
-//                                    k,
-//                                    rows,
-//                                    batch_size,
-//                                    out_dim);
+  Aggregate::forward_kernel_wrapper(m,
+                                    bc,
+                                    exp_preds,
+                                    acc_gate_assign.ptr(rect_gate_assign),
+                                    acc_gate_pred.ptr(rect_gate_pred),
+                                    acc_output.ptr(rect_output),
+                                    n,
+                                    k,
+                                    rows,
+                                    batch_size,
+                                    out_dim);
 }
 
 // TODO HL copied forward_task. Can we just do that?
@@ -627,6 +593,7 @@ void Aggregate::inference_task(Task const *task,
                              Runtime *runtime) {
   // TODO inference_task is never called, need to register it
   assert(false && "Aggregate::inference_task needed after all!");
+
 
 //  assert(regions.size() == task->regions.size());
 //  int n = regions.size() - 3;
