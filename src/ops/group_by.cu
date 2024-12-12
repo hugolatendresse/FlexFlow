@@ -58,9 +58,10 @@ __global__ void
   CUDA_KERNEL_LOOP(i, k * batch_size * data_dim) {
     if (chosen_exp_preds[i / data_dim] != 0) {
       float a = input[(i / (k * data_dim)) * data_dim + i % data_dim];
-      chosen_exp_preds[i / data_dim][i % data_dim] = a;
+      outputs[i / data_dim][i % data_dim] = a; // MK Changed from shared buff to output assignment
     }
   }
+
 }
 
 __global__ void
