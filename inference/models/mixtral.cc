@@ -35,7 +35,9 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
                                    bool use_full_precision) {
 
   MixtralConfig mixtral_config(model_config_file_path);
-  mixtral_config.print();
+
+  mixtral_config.num_local_experts = 1;
+  mixtral_config.num_experts_per_tok = 1;
 
   if (ff.config.tensor_parallelism_degree > mixtral_config.num_attention_heads ||
       mixtral_config.num_attention_heads % ff.config.tensor_parallelism_degree !=
