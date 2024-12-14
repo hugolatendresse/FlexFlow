@@ -173,6 +173,7 @@ enum OperatorType {
   OP_RESIDUAL_LAYERNORM,
   OP_ADD_BIAS_RESIDUAL_LAYERNORM,
   OP_SIGMOID_SILU_MULTI,
+  OP_EXPERT,
   OP_EXPERTS,
   OP_GATHER, // https://pytorch.org/docs/stable/generated/torch.gather.html
   OP_RMS_NORM,

@@ -30,7 +30,7 @@ using Legion::TaskLauncher;
 
 // TODO remove all instances of "Linear" in this script
 
-using namespace FlexFlow::Kernels::Linear;
+//using namespace FlexFlow::Kernels::Linear;
 
 static constexpr int W1_IDX = 0;
 static constexpr int W2_IDX = 1;
@@ -71,7 +71,7 @@ Tensor FFModel::expert(const Tensor input,
 //                   casted_input);
   } else {
     li = new Layer(this,
-                   OP_LINEAR,
+                   OP_EXPERT,
                    data_type,
                    name_expert,
                    1 /*inputs*/,
@@ -121,9 +121,9 @@ Tensor FFModel::expert(const Tensor input,
         kernel_initializer,
         CHOSEN_SYNC_TYPE);
 
-    li2->weights[W2_IDX] = create_weight_legion_ordering(
+    li->weights[W2_IDX] = create_weight_legion_ordering(
     2,
-    dims_in_out_w1,
+    dims_in_out_w2,
     quantization_type == DT_NONE ? data_type : quantization_type,
     li,
     true /*create_grad*/,
@@ -138,16 +138,19 @@ Tensor FFModel::expert(const Tensor input,
   li1->add_int_property("quantization_type", quantization_type);
   li1->add_int_property("offload", offload);
   layers.push_back(li);
-  return li->outputs[0];
+  return li->outputs[1];
 }
 
-Op *Linear::create_operator_from_layer(
+Op *Expert::create_operator_from_layer(
     FFModel &model,
     Layer const *layer,
     std::vector<ParallelTensor> const &inputs) {
   long long value;
-  layer->get_int_property("out_dim", value);
-  int outdim = value;
+  layer->get_int_property("out_dim_intermediate", value);
+  int outdim_intermediate = value;
+  layer->get_int_property("out_dim_hidden", value);
+  int outdim_hidden = value;
+
   layer->get_int_property("activation", value);
   ActiMode activation = (ActiMode)value;
   layer->get_int_property("kernel_reg_type", value);
@@ -228,7 +231,7 @@ Linear::Linear(FFModel &model,
                bool allocate_weights,
                char const *name)
     : Op(model,
-         OP_LINEAR,
+         OP_EXPERT,
          _data_type,
          name,
          1 /*inputs*/,

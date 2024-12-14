@@ -37,6 +37,7 @@
 #include "flexflow/ops/residual_rms_norm.h"
 #include "flexflow/ops/rms_norm.h"
 #include "flexflow/ops/sigmoid_silu_multi.h"
+#include "flexflow/ops/expert.h"
 #include "flexflow/ops/softmax.h"
 #include "flexflow/ops/split.h"
 #include "flexflow/ops/tree_inc_multihead_self_attention.h"
