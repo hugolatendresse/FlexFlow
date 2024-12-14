@@ -3269,7 +3269,7 @@ Op *FFModel::create_operator_from_layer(
     }
     case OP_EXPERT: {
       Op *op =
-          EXPERT::create_operator_from_layer(*this, layer, inputs);
+          Expert::create_operator_from_layer(*this, layer, inputs);
       operators.push_back(op);
       return op;
     }
