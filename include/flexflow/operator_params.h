@@ -16,6 +16,7 @@
 #include "flexflow/ops/element_binary_params.h"
 #include "flexflow/ops/element_unary_params.h"
 #include "flexflow/ops/embedding_params.h"
+#include "flexflow/ops/expert_params.h"
 #include "flexflow/ops/experts_params.h"
 #include "flexflow/ops/flat_params.h"
 #include "flexflow/ops/gather_params.h"

@@ -4,6 +4,9 @@
 #include "flexflow/inference.h"
 #include "flexflow/model.h"
 #include "flexflow/utils/memory_allocator.h"
+#include "flexflow/ops/expert_params.h"
+
+
 namespace FlexFlow {
 
 class ExpertMeta;
