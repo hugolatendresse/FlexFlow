@@ -661,6 +661,23 @@ public:
   // Add a concat layer
   Tensor
       concat(int n, Tensor const *tensors, int axis, char const *name = NULL);
+  // Add an expert layer
+  Tensor expert(const Tensor input,
+                      int outDim_intermediate, // used to get w1 and w3
+                      int outDim_hidden, // used to get w2
+                      ActiMode activation,
+                      bool use_bias,
+                      DataType data_type,
+                      Layer const *shared_op,
+                      Initializer *kernel_initializer,
+                      Initializer *bias_initializer,
+                      RegularizerMode kernel_reg_type,
+                      float kernel_reg_lambda,
+                      char const *name1,
+                      char const *name3, // mimics order of usage of weights
+                      char const *name2,
+                       char const *name_expert // name for the entire expert
+                       );
   // Add an experts layer
   Tensor experts(
       Tensor const *inputs,

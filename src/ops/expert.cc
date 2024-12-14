@@ -130,13 +130,13 @@ Tensor FFModel::expert(const Tensor input,
     kernel_initializer,
     CHOSEN_SYNC_TYPE);
   }
-  li1->add_int_property("out_dim_intermediate", outDim_intermediate);
-  li1->add_int_property("out_dim_hidden", outDim_hidden);
-  li1->add_int_property("activation", activation);
-  li1->add_int_property("kernel_reg_type", kernel_reg_type);
-  li1->add_float_property("kernel_reg_lambda", kernel_reg_lambda);
-  li1->add_int_property("quantization_type", quantization_type);
-  li1->add_int_property("offload", offload);
+  li->add_int_property("out_dim_intermediate", outDim_intermediate);
+  li->add_int_property("out_dim_hidden", outDim_hidden);
+  li->add_int_property("activation", activation);
+  li->add_int_property("kernel_reg_type", kernel_reg_type);
+  li->add_float_property("kernel_reg_lambda", kernel_reg_lambda);
+  li->add_int_property("quantization_type", quantization_type);
+  li->add_int_property("offload", offload);
   layers.push_back(li);
   return li->outputs[1];
 }
