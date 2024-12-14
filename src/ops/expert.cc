@@ -1,9 +1,22 @@
-#include "flexflow/ops/expert.h"
-#include "flexflow/ffconst_utils.h"
-#include "flexflow/layer.h"
-#include "flexflow/model.h"
-#include "flexflow/ops/kernels/linear_kernels.h"
-#include "flexflow/utils/hash_utils.h"
+/* Copyright 2022 CMU
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "flexflow/ops/experts.h"
+#ifdef INFERENCE_TESTS
+#include "flexflow/utils/cuda_helper.h"
+#endif
 #include "legion/legion_utilities.h"
 
 namespace FlexFlow {
@@ -16,9 +29,6 @@ using Legion::Domain;
 using Legion::Future;
 using Legion::FutureMap;
 using Legion::IndexLauncher;
-using Legion::InlineLauncher;
-using Legion::Machine;
-using Legion::Memory;
 using Legion::PhysicalRegion;
 using Legion::Predicate;
 using Legion::Rect;
@@ -27,342 +37,430 @@ using Legion::Runtime;
 using Legion::Task;
 using Legion::TaskArgument;
 using Legion::TaskLauncher;
+using PCG::Node;
 
-// TODO remove all instances of "Linear" in this script
+static constexpr int KERNEL_IDX = 0;
+static constexpr int BIAS_IDX = 1;
+#ifdef INFERENCE_TESTS
+static bool DEBUG_MODE = false;
+#endif
 
-//using namespace FlexFlow::Kernels::Linear;
+// For now, we use one input and one output per expert
+Tensor FFModel::experts(Tensor const *inputs,
+                        int num_experts,
+                        int experts_start_idx,
+                        int experts_output_dim_size,
+                        float alpha,
+                        int experts_num_layers,
+                        int experts_internal_dim_size,
+                        char const *name) {
 
-static constexpr int W1_IDX = 0;
-static constexpr int W2_IDX = 1;
-static constexpr int W3_IDX = 2;
-
-Tensor FFModel::expert(const Tensor input,
-                      int outDim_intermediate, // used to get w1 and w3
-                      int outDim_hidden, // used to get w2
-                      ActiMode activation,
-                      bool use_bias,
-                      DataType data_type,
-                      Layer const *shared_op,
-                      Initializer *kernel_initializer,
-                      Initializer *bias_initializer,
-                      RegularizerMode kernel_reg_type,
-                      float kernel_reg_lambda,
-                      char const *name1,
-                      char const *name3, // mimics order of usage of weights
-                      char const *name2,
-                       char const *name_expert // name for the entire expert
-                       ) {
-  if (data_type == DT_NONE) {
-    data_type = input->data_type;
-  }
-  DataType quantization_type = cpu_offload ? config.quantization_type : DT_NONE;
-  bool offload = cpu_offload;
-  Layer *li = nullptr;
-  if (data_type != input->data_type) {
-  assert(false && "Not implemented");
-    //    Tensor casted_input = cast(input, data_type, "type cast for dense");
-//    li = new Layer(this,
-//                   OP_LINEAR,
-//                   data_type,
-//                   name,
-//                   1 /*inputs*/,
-//                   use_bias ? 2 : 1 /*weights*/,
-//                   1 /*outputs*/,
-//                   casted_input);
-  } else {
-    li = new Layer(this,
-                   OP_EXPERT,
-                   data_type,
-                   name_expert,
-                   1 /*inputs*/,
-                   use_bias ? 2 : 1 /*weights*/,
-                   1 /*outputs*/,
-                   input);
+  // Check that there are three inputs: the input tensor, the indices and the
+  // topk_gate_preds
+  assert(inputs[0] != nullptr);
+  int num_dims = inputs[0]->num_dims;
+  assert(inputs[1]->num_dims == num_dims);
+  assert(inputs[2]->num_dims == num_dims);
+  int topk = inputs[1]->dims[0];
+  assert(inputs[2]->dims[0] == topk);
+  for (int i = 1; i < num_dims; i++) {
+    assert(inputs[0]->dims[i] == inputs[1]->dims[i]);
+    assert(inputs[1]->dims[i] == inputs[2]->dims[i]);
   }
 
+  assert(inputs[1]->data_type == DT_INT32 || inputs[1]->data_type == DT_INT64);
+
+  assert(experts_num_layers >= 1);
+  assert(experts_num_layers <= 2 && "Multi-layer experts not implemented yet.");
+  assert(experts_num_layers == 1 || experts_internal_dim_size > 0);
+
+  // parameters for the FFN implementing the experts. We can make these
+  // FFModel::experts(...) function parameters if needed.
+  bool use_bias = true;
+  ActiMode activation = AC_MODE_RELU;
+
+  Layer *e = new Layer(this,
+                       OP_EXPERTS,
+                       DT_FLOAT,
+                       name,
+                       3 /*inputs*/,
+                       (1 + use_bias) /*weights*/,
+                       1 /*outputs*/,
+                       inputs);
   {
-
-    int numdims_w1 = input->num_dims;
-    int dims_w1[MAX_TENSOR_DIM];
-    for (int i = 0; i < numdims; i++) {
-      dims_w1[i] = input->dims[i];
+    int dims[MAX_TENSOR_DIM];
+    for (int i = 1; i < num_dims; i++) {
+      dims[i] = inputs[0]->dims[i];
     }
-    dims_w1[0] = outDim_intermediate;
-
-    int numdims_w2 = input->num_dims;
-    int dims_w2[MAX_TENSOR_DIM];
-    for (int i = 0; i < numdims; i++) {
-      dims_w2[i] = input->dims[i];
-    }
-    dims_w2[0] = outDim_hidden;
-
-    //    std::cout << "Dense " << name << " Creating output tensor with dims[2] = " << dims[0] << std::endl;
-    // dims[2] is always 1024
-    li->outputs1[0] = create_tensor_legion_ordering(
-        numdims_w1, dims_w1, data_type, li1, 0, true /*create_grad*/);
-    li->outputs2[0] = create_tensor_legion_ordering(
-    numdims_w2, dims_w2, data_type, li2, 0, true /*create_grad*/);
+    dims[0] = experts_output_dim_size;
+    e->outputs[0] = create_tensor_legion_ordering(
+        num_dims, dims, DT_FLOAT, e, 0, true /*create_grad*/);
+    assert(e->outputs[0] != nullptr);
   }
   {
-    int dims_in_out_w1[2] = {input->dims[0], outDim_intermediate};
-    int dims_in_out_w2[2] = {outDim_intermediate, outDim_hidden};
-
-    if (quantization_type != DT_NONE) {
-      assert(false && "Not implemented");
-//      dims[0] =
-//          get_quantization_to_byte_size(data_type, quantization_type, dims[0]);
-    }
-    li->weights[W1_IDX] = create_weight_legion_ordering(
-        2,
-        dims_in_out_w1,
-        quantization_type == DT_NONE ? data_type : quantization_type,
-        li,
-        true /*create_grad*/,
-        kernel_initializer,
-        CHOSEN_SYNC_TYPE);
-
-    li->weights[W2_IDX] = create_weight_legion_ordering(
-    2,
-    dims_in_out_w2,
-    quantization_type == DT_NONE ? data_type : quantization_type,
-    li,
-    true /*create_grad*/,
-    kernel_initializer,
-    CHOSEN_SYNC_TYPE);
+    int nparams = (experts_num_layers == 1)
+                      ? (inputs[0]->dims[0] * experts_output_dim_size)
+                      : experts_internal_dim_size *
+                            (inputs[0]->dims[0] + experts_output_dim_size);
+    int dims[2] = {nparams, num_experts};
+    e->weights[0] = create_weight_legion_ordering(
+        2, dims, DT_FLOAT, e, true /*create_grad*/, nullptr, CHOSEN_SYNC_TYPE);
   }
-  li->add_int_property("out_dim_intermediate", outDim_intermediate);
-  li->add_int_property("out_dim_hidden", outDim_hidden);
-  li->add_int_property("activation", activation);
-  li->add_int_property("kernel_reg_type", kernel_reg_type);
-  li->add_float_property("kernel_reg_lambda", kernel_reg_lambda);
-  li->add_int_property("quantization_type", quantization_type);
-  li->add_int_property("offload", offload);
-  layers.push_back(li);
-  return li->outputs[1];
+  if (use_bias) {
+    int nparams = (experts_num_layers == 1)
+                      ? experts_output_dim_size
+                      : (experts_internal_dim_size + experts_output_dim_size);
+    int dims[2] = {nparams, num_experts};
+    e->weights[1] = create_weight_legion_ordering(
+        2, dims, DT_FLOAT, e, true /*create_grad*/, nullptr, CHOSEN_SYNC_TYPE);
+  }
+
+  e->add_int_property("num_experts", num_experts);
+  e->add_int_property("experts_start_idx", experts_start_idx);
+  e->add_int_property("experts_output_dim_size", experts_output_dim_size);
+  e->add_float_property("alpha", alpha);
+  e->add_int_property("experts_num_layers", experts_num_layers);
+  e->add_int_property("experts_internal_dim_size", experts_internal_dim_size);
+  e->add_int_property("use_bias", use_bias);
+  e->add_int_property("activation", activation);
+  layers.push_back(e);
+
+  return e->outputs[0];
 }
 
-Op *Expert::create_operator_from_layer(
+Op *Experts::create_operator_from_layer(
     FFModel &model,
     Layer const *layer,
     std::vector<ParallelTensor> const &inputs) {
   long long value;
-  layer->get_int_property("out_dim_intermediate", value);
-  int outdim_intermediate = value;
-  layer->get_int_property("out_dim_hidden", value);
-  int outdim_hidden = value;
-
+  layer->get_int_property("num_experts", value);
+  int num_experts = value;
+  layer->get_int_property("experts_start_idx", value);
+  int experts_start_idx = value;
+  layer->get_int_property("experts_output_dim_size", value);
+  int experts_output_dim_size = value;
+  float value2;
+  layer->get_float_property("alpha", value2);
+  float alpha = value2;
+  layer->get_int_property("experts_num_layers", value);
+  int experts_num_layers = value;
+  layer->get_int_property("experts_internal_dim_size", value);
+  int experts_internal_dim_size = value;
+  layer->get_int_property("use_bias", value);
+  bool use_bias = (bool)value;
   layer->get_int_property("activation", value);
   ActiMode activation = (ActiMode)value;
-  layer->get_int_property("kernel_reg_type", value);
-  RegularizerMode kernel_reg_type = (RegularizerMode)value;
-  float kernel_reg_lambda;
-  layer->get_float_property("kernel_reg_lambda", kernel_reg_lambda);
-  layer->get_int_property("quantization_type", value);
-  DataType quantization_type = (DataType)value;
-  layer->get_int_property("offload", value);
-  bool offload = (bool)value;
-  return new Linear(model,
-                    layer->layer_guid,
-                    inputs[0],
-                    outdim,
-                    activation,
-                    kernel_reg_type,
-                    kernel_reg_lambda,
-                    use_bias,
-                    layer->data_type,
-                    quantization_type,
-                    offload,
-                    false /*allocate_weights*/,
-                    layer->name);
+  return new Experts(model,
+                     layer->layer_guid,
+                     inputs.data(),
+                     num_experts,
+                     experts_start_idx,
+                     experts_output_dim_size,
+                     alpha,
+                     experts_num_layers,
+                     experts_internal_dim_size,
+                     use_bias,
+                     activation,
+                     false /*allocate_weights*/,
+                     layer->name);
 }
 
-// size_t Linear::get_params_hash() const {
-//   return this->get_params().get_hash(this->inputs[0]);
-// }
+ExpertsParams Experts::get_params() const {
+  ExpertsParams params;
+  params.layer_guid = this->layer_guid;
+  params.num_experts = num_experts;
+  params.experts_start_idx = experts_start_idx;
+  params.experts_output_dim_size = experts_output_dim_size;
+  params.alpha = alpha;
+  params.experts_num_layers = experts_num_layers;
+  params.experts_internal_dim_size = experts_internal_dim_size;
+  params.use_bias = use_bias;
+  params.activation = activation;
+  return params;
+}
 
-Linear::Linear(FFModel &model,
-               Linear const &other,
-               const ParallelTensor input,
-               bool allocate_weights)
-    : Linear(model,
-             other.layer_guid,
-             input,
-             other.out_channels,
-             other.activation,
-             other.kernel_reg_type,
-             other.kernel_reg_lambda,
-             other.use_bias,
-             other.data_type,
-             other.quantization_type,
-             other.offload,
-             allocate_weights,
-             other.name) {}
+bool ExpertsParams::is_valid(
+    std::vector<ParallelTensorShape> const &inputs) const {
+  if (inputs.size() != 3) {
+    printf("Number of inputs to the Experts layer is wrong\n");
+    return false;
+  }
+  if (!inputs[0].is_valid()) {
+    printf("The first tensor passed to the Experts layer is not valid\n");
+    return false;
+  }
+  if (!inputs[1].is_valid()) {
+    printf("The second tensor passed to the Experts layer is not valid\n");
+    return false;
+  }
+  if (!inputs[2].is_valid()) {
+    printf("The third tensor passed to the Experts layer is not valid\n");
+    return false;
+  }
+  if (inputs[0].num_dims != inputs[1].num_dims ||
+      inputs[1].num_dims != inputs[2].num_dims) {
+    printf("Mismatch found between the number of dimensions of the three input "
+           "tensors for the Expert layer\n");
+    return false;
+  }
+  if (inputs[0].data_type != DT_FLOAT) {
+    printf("Data type of the first input to the Experts layer is wrong!\n");
+    return false;
+  }
+  if (inputs[1].data_type != DT_INT32 && inputs[1].data_type != DT_INT64) {
+    printf("Data type of the second input to the Experts layer is wrong!\n");
+    return false;
+  }
+  if (inputs[2].data_type != DT_FLOAT) {
+    printf("Data type of the third input to the Experts layer is wrong!\n");
+    return false;
+  }
+  if (inputs[1].dims[0] != inputs[2].dims[0]) {
+    printf(
+        "Dimension mismatch between indices and topk_gate_preds tensors passed "
+        "to the Experts layer.\n");
+    return false;
+  }
+  for (int i = 1; i < inputs[0].num_dims; i++) {
+    if (inputs[0].dims[i] != inputs[1].dims[i] ||
+        inputs[1].dims[i] != inputs[2].dims[i]) {
+      printf("Dimension mismatch among the input tensors passed to the Experts "
+             "layer.\n");
+      return false;
+    }
+  }
+  return true;
+}
 
-Linear::Linear(FFModel &model,
-               LinearParams const &params,
-               ParallelTensor const input,
-               char const *name,
-               bool allocate_weights)
-    : Linear(model,
-             params.layer_guid,
-             input,
-             params.out_channels,
-             params.activation,
-             params.kernel_reg_type,
-             params.kernel_reg_lambda,
-             params.use_bias,
-             params.data_type,
-             params.quantization_type,
-             params.offload,
-             allocate_weights,
-             params.name) {}
+bool operator==(ExpertsParams const &lhs, ExpertsParams const &rhs) {
+  return lhs.layer_guid == rhs.layer_guid &&
+         lhs.num_experts == rhs.num_experts &&
+         lhs.experts_start_idx == rhs.experts_start_idx &&
+         lhs.experts_output_dim_size == rhs.experts_output_dim_size &&
+         lhs.alpha == rhs.alpha &&
+         lhs.experts_num_layers == rhs.experts_num_layers &&
+         lhs.experts_internal_dim_size == rhs.experts_internal_dim_size &&
+         lhs.use_bias == rhs.use_bias && lhs.activation == rhs.activation;
+}
 
-Linear::Linear(FFModel &model,
-               LayerID const &_layer_guid,
-               const ParallelTensor _input,
-               int out_dim,
-               ActiMode _activation,
-               RegularizerMode _kernel_reg_type,
-               float _kernel_reg_lambda,
-               bool _use_bias,
-               DataType _data_type,
-               DataType _quantization_type,
-               bool _offload,
-               bool allocate_weights,
-               char const *name)
+Experts::Experts(FFModel &model,
+                 ExpertsParams const &params,
+                 std::vector<ParallelTensor> const &inputs,
+                 bool allocate_weights,
+                 char const *name)
+    : Experts(model,
+              params.layer_guid,
+              inputs.data(),
+              params.num_experts,
+              params.experts_start_idx,
+              params.experts_output_dim_size,
+              params.alpha,
+              params.experts_num_layers,
+              params.experts_internal_dim_size,
+              params.use_bias,
+              params.activation,
+              allocate_weights,
+              params.name) {}
+
+Experts::Experts(FFModel &model,
+                 LayerID const &_layer_guid,
+                 ParallelTensor const *inputs,
+                 int _num_experts,
+                 int _experts_start_idx,
+                 int _experts_output_dim_size,
+                 float _alpha,
+                 int _experts_num_layers,
+                 int _experts_internal_dim_size,
+                 bool _use_bias,
+                 ActiMode _activation,
+                 bool allocate_weights,
+                 char const *name)
     : Op(model,
-         OP_EXPERT,
-         _data_type,
+         OP_EXPERTS,
+         DT_FLOAT,
          name,
-         1 /*inputs*/,
-         _use_bias ? 2 : 1 /*weights*/,
-         allocate_weights,
+         3 /*inputs*/,
+         (1 + _use_bias) /*weights*/,
          1 /*outputs*/,
-         _input),
-      out_channels(out_dim), activation(_activation), use_bias(_use_bias),
-      kernel_reg_type(_kernel_reg_type), kernel_reg_lambda(_kernel_reg_lambda),
-      quantization_type(_quantization_type), offload(_offload),
-      replica(ParallelTensorBase::NO_TENSOR) {
+         inputs),
+      num_experts(_num_experts), experts_start_idx(_experts_start_idx),
+      experts_output_dim_size(_experts_output_dim_size), alpha(_alpha),
+      experts_num_layers(_experts_num_layers),
+      experts_internal_dim_size(_experts_internal_dim_size),
+      use_bias(_use_bias), activation(_activation) {
+
   // overwrite layer_guid
   layer_guid = _layer_guid;
-  data_type = _data_type;
-  auto dimension_names =
-      this->get_params().get_dimension_names(_input->get_shape());
-  this->in_channels =
-      _input->dims[dimension_names.at(LinearParams::INPUT_CHANNEL)].size;
 
-  ParallelTensorShape input_shape = this->inputs[0]->get_shape();
-  ParallelTensorShape output_shape, kernel_shape, bias_shape;
-  LinearParams params = this->get_params();
-  params.construct_mappings(*this->parallel_dims_mapping, input_shape);
-  params.solve_dims(input_shape, output_shape, kernel_shape, bias_shape);
-  kernel_shape.dims[0].size = this->in_channels;
-  bias_shape.dims[0].degree = _input->dims[_input->num_dims - 1].degree;
-  bias_shape.dims[0].parallel_idx =
-      _input->dims[_input->num_dims - 1].parallel_idx;
-  bias_shape.dims[1].size = bias_shape.dims[1].degree = 1;
-  bias_shape.dims[1].parallel_idx = -1;
-  bias_shape.dims[bias_shape.num_dims - 1].size =
-      bias_shape.dims[bias_shape.num_dims - 1].degree = 1;
-  for (int i = 0; i < input_shape.num_dims - 1; i++) {
-    if (_input->dims[i].degree > 1) {
-      bias_shape.dims[bias_shape.num_dims - 1].size *= _input->dims[i].degree;
-      bias_shape.dims[bias_shape.num_dims - 1].degree *= _input->dims[i].degree;
-      bias_shape.dims[bias_shape.num_dims - 1].parallel_idx =
-          _input->dims[i].parallel_idx;
-    }
+  // Check number of inputs, output, weights
+  assert(num_experts > 0);
+  assert(numInputs == 3);
+  assert(numOutputs == 1);
+  assert(numWeights == (1 + use_bias));
+
+  // Check input dimensions
+  int num_dims = inputs[0]->num_dims;
+  int topk = inputs[1]->dims[0].size;
+  assert(inputs[0] != nullptr);
+  assert(inputs[1]->num_dims == num_dims);
+  assert(inputs[2]->num_dims == num_dims);
+  assert(inputs[2]->dims[0].size == topk);
+  for (int i = 1; i < num_dims; i++) {
+    assert(inputs[0]->dims[i] == inputs[1]->dims[i]);
+    assert(inputs[1]->dims[i] == inputs[2]->dims[i]);
   }
+  // Assume that we don't parallelize the channel dim of input
+  // nor the expert_assigned dim of indices
+  assert(inputs[0]->dims[0].degree == 1);
+  assert(inputs[1]->dims[0].degree == 1);
+  assert(inputs[2]->dims[0].degree == 1);
+  // check data type of indices input
+  assert(inputs[1]->data_type == DT_INT32 || inputs[1]->data_type == DT_INT64);
+  assert(experts_num_layers >= 1);
+  assert(experts_num_layers <= 2 && "Multi-layer experts not implemented yet.");
+  assert(experts_num_layers == 1 || experts_internal_dim_size > 0);
+
+  // save the token embedding dimension (data_dim) and the effective batch size
+  data_dim = inputs[0]->dims[0].size;
+  effective_batch_size = 1;
+  for (int i = 1; i <= num_dims - 2; i++) {
+    effective_batch_size *= inputs[0]->dims[i].size;
+  }
+  num_chosen_experts = topk;
+
+  out_dim = _experts_output_dim_size;
+
+  // Create the parallel tensor for the output
+  ParallelDim out_dims[MAX_TENSOR_DIM];
+  for (int i = 0; i < num_dims; i++) {
+    out_dims[i] = inputs[0]->dims[i];
+  }
+  out_dims[0].size = experts_output_dim_size;
+  outputs[0] = model.create_parallel_tensor_legion_ordering(
+      num_dims, out_dims, inputs[0]->data_type, this, 0 /*owner_idx*/);
+  assert(outputs[0] != nullptr);
 
   if (allocate_weights) {
-    Initializer *kernel_initializer = new GlorotUniform(std::rand() /*seed*/);
-    if (quantization_type != DT_NONE) {
-      kernel_shape.dims[0].size = get_quantization_to_byte_size(
-          data_type, quantization_type, kernel_shape.dims[0].size);
+    {
+      ParallelDim dims[3];
+      int nparams = (experts_num_layers == 1)
+                        ? (data_dim * experts_output_dim_size)
+                        : experts_internal_dim_size *
+                              (data_dim + experts_output_dim_size);
+      dims[0].size = nparams;
+      dims[0].degree = 1;
+      dims[0].parallel_idx = -1;
+      dims[1] = inputs[0]->dims[num_dims - 1];
+      dims[1].size = num_experts;
+      dims[2] = inputs[0]->dims[num_dims - 2];
+      dims[2].size = dims[0].degree;
+      Initializer *kernel_initializer = new GlorotUniform(std::rand() /*seed*/);
+      // assert(kernel_shape.dims[2].size == num_experts);
+      weights[0] =
+          model.create_parallel_weight_legion_ordering(3,
+                                                       dims,
+                                                       DT_FLOAT,
+                                                       NULL /*owner_op*/,
+                                                       true /*create_grad*/,
+                                                       kernel_initializer,
+                                                       CHOSEN_SYNC_TYPE);
+      assert(weights[0] != nullptr);
     }
-    weights[KERNEL_IDX] = model.create_parallel_weight_legion_ordering(
-        kernel_shape.num_dims,
-        kernel_shape.dims,
-        quantization_type == DT_NONE ? _data_type : quantization_type,
-        NULL /*owner_op*/,
-        true /*create_grad*/,
-        kernel_initializer,
-        CHOSEN_SYNC_TYPE);
-
+    if (use_bias) {
+      Initializer *bias_initializer = new ZeroInitializer();
+      // assert(bias_shape.dims[1].size == num_experts);
+      ParallelDim dims[3];
+      int nparams = (experts_num_layers == 1)
+                        ? experts_output_dim_size
+                        : (experts_internal_dim_size + experts_output_dim_size);
+      dims[0].size = nparams;
+      dims[0].degree = 1;
+      dims[0].parallel_idx = -1;
+      dims[1] = inputs[0]->dims[num_dims - 1];
+      dims[1].size = num_experts;
+      dims[2] = inputs[0]->dims[num_dims - 2];
+      dims[2].size = dims[0].degree;
+      weights[1] =
+          model.create_parallel_weight_legion_ordering(3,
+                                                       dims,
+                                                       DT_FLOAT,
+                                                       NULL /*owner_op*/,
+                                                       true /*create_grad*/,
+                                                       bias_initializer,
+                                                       CHOSEN_SYNC_TYPE);
+      assert(weights[1] != nullptr);
+    }
   }
-
-  // Create the output tensor
-//  std::cout << "Linear::Linear " << name << " create_parallel_tensor has num_dims = " << output_shape.num_dims << std::endl;
-//  std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[0] = " << output_shape.dims[0].size << std::endl;
-//  std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[1] = " << output_shape.dims[1].size << std::endl;
-//  std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[2] = " << output_shape.dims[2].size << std::endl;
-//  std::cout << "Linear::Linear " << name << " create_parallel_tensor with dims[3] = " << output_shape.dims[3].size << std::endl;
-  // TODO for w2, the dims are (1024,1,1,1) (4 dims confirmed) !! Should have sequence length somewhere...
-  outputs[0] = model.create_parallel_tensor_legion_ordering(
-      output_shape.num_dims, output_shape.dims, _data_type, this);
-
-  // assert(check_output_input_weight_parallel_dims(allocate_weights));
+  assert(check_output_input_weight_parallel_dims(allocate_weights));
 }
 
-void Linear::init(FFModel const &ff) {
-  assert(check_output_input_weight_same_parallel_is());
-  // assert(check_output_input_weight_same_machine_view());
-  parallel_is = outputs[0]->parallel_is;
-  ArgumentMap argmap;
-  Context ctx = ff.config.lg_ctx;
-  Runtime *runtime = ff.config.lg_hlr;
-  set_argumentmap_for_init(ff, argmap);
-  IndexLauncher launcher(LINEAR_INIT_TASK_ID,
-                         parallel_is,
-                         TaskArgument(this, sizeof(Linear)),
-                         argmap,
-                         Predicate::TRUE_PRED,
-                         false /*must*/,
-                         0 /*mapper_id*/,
-                         outputs[0]->machine_view.hash());
-  // launcher.add_region_requirement(
-  //     RegionRequirement(input_lps[0], 0/*projection id*/,
-  //                       READ_ONLY, EXCLUSIVE, inputs[0]->region));
-  // launcher.add_field(0, FID_DATA);
-  launcher.add_region_requirement(RegionRequirement(inputs[0]->part,
-                                                    0 /*projection id*/,
-                                                    WRITE_ONLY,
-                                                    EXCLUSIVE,
-                                                    inputs[0]->region));
-  launcher.add_field(0, FID_DATA);
-  launcher.add_region_requirement(RegionRequirement(outputs[0]->part,
-                                                    0 /*projection id*/,
-                                                    WRITE_ONLY,
-                                                    EXCLUSIVE,
-                                                    outputs[0]->region));
-  launcher.add_field(1, FID_DATA);
-  launcher.add_region_requirement(RegionRequirement(weights[0]->part,
-                                                    0 /*projection id*/,
-                                                    READ_ONLY,
-                                                    EXCLUSIVE,
-                                                    weights[0]->region));
-  launcher.add_field(2, FID_DATA);
-  // launcher.add_region_requirement(
-  //     RegionRequirement(weights[1]->part, 0/*projection id*/,
-  //                       READ_ONLY, EXCLUSIVE, weights[1]->region));
-  // launcher.add_field(3, FID_DATA);
-  if (ff.config.computationMode == COMP_MODE_TRAINING) {
-    // Add inputs[0].region_grad to avoid Legion warning
-    // launcher.add_region_requirement(
-    //    RegionRequirement(input_grad_lps[0], 0/*projection id*/,
-    //        WRITE_ONLY, EXCLUSIVE, inputs[0].region_grad));
-    // launcher.add_field(2, FID_DATA);
-  }
-  FutureMap fm = runtime->execute_index_space(ctx, launcher);
-  fm.wait_all_results();
-  set_opmeta_from_futuremap(ff, fm);
+void Experts::serialize(Legion::Serializer &sez) const {
+  ExpertsParams params = get_params();
+  sez.serialize(params.layer_guid.id);
+  sez.serialize(params.layer_guid.transformer_layer_id);
+  sez.serialize(params.layer_guid.model_id);
+  sez.serialize(params.num_experts);
+  sez.serialize(params.experts_start_idx);
+  sez.serialize(params.experts_output_dim_size);
+  sez.serialize(params.alpha);
+  sez.serialize(params.experts_num_layers);
+  sez.serialize(params.experts_internal_dim_size);
+  sez.serialize(params.use_bias);
+  sez.serialize(params.activation);
+  sez.serialize(strlen(this->name));
+  sez.serialize(this->name, strlen(this->name));
 }
 
-void Linear::init_inference(FFModel const &ff,
-                            std::vector<ParallelTensor> const &batch_inputs,
-                            std::vector<ParallelTensor> const &batch_outputs,
-                            MachineView const *mv) {
+using PCG::Node;
+Node Experts::deserialize(FFModel &ff,
+                          Legion::Deserializer &dez,
+                          std::vector<ParallelTensor> const &inputs,
+                          int num_inputs) {
+  int num_experts, experts_start_idx, experts_output_dim_size,
+      experts_num_layers, experts_internal_dim_size;
+  float alpha;
+  ActiMode activation;
+  bool use_bias;
+  size_t id, transformer_layer_id, deserialized_model_id;
+  dez.deserialize(id);
+  dez.deserialize(transformer_layer_id);
+  dez.deserialize(deserialized_model_id);
+  LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
+  dez.deserialize(num_experts);
+  dez.deserialize(experts_start_idx);
+  dez.deserialize(experts_output_dim_size);
+  dez.deserialize(alpha);
+  dez.deserialize(experts_num_layers);
+  dez.deserialize(experts_internal_dim_size);
+  dez.deserialize(use_bias);
+  dez.deserialize(activation);
+  size_t name_len;
+  char name[MAX_OPNAME] = {0};
+  dez.deserialize(name_len);
+  dez.deserialize(name, name_len);
+
+  assert(num_inputs == 3);
+
+  ExpertsParams params;
+  params.layer_guid = layer_guid;
+  params.num_experts = num_experts;
+  params.experts_start_idx = experts_start_idx;
+  params.experts_output_dim_size = experts_output_dim_size;
+  params.alpha = alpha;
+  params.experts_num_layers = experts_num_layers;
+  params.experts_internal_dim_size = experts_internal_dim_size;
+  params.use_bias = use_bias;
+  params.activation = activation;
+  strcpy(params.name, name);
+
+  return ff.get_or_create_node<Experts>(inputs, params);
+}
+
+void Experts::init_inference(FFModel const &ff,
+                             std::vector<ParallelTensor> const &batch_inputs,
+                             std::vector<ParallelTensor> const &batch_outputs,
+                             MachineView const *mv) {
   assert(check_output_input_weight_same_parallel_is());
-  // assert(check_output_input_weight_same_machine_view());
   parallel_is = batch_outputs[0]->parallel_is;
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
@@ -370,170 +468,142 @@ void Linear::init_inference(FFModel const &ff,
   MachineView const *view = mv ? mv : &batch_outputs[0]->machine_view;
   size_t machine_view_hash = view->hash();
   set_argumentmap_for_init_inference(ff, argmap, batch_outputs[0]);
-  IndexLauncher launcher(LINEAR_INIT_TASK_ID,
+  IndexLauncher launcher(EXPERTS_INIT_TASK_ID,
                          parallel_is,
-                         TaskArgument(this, sizeof(Linear)),
+                         TaskArgument(this, sizeof(Experts)),
                          argmap,
                          Predicate::TRUE_PRED,
                          false /*must*/,
                          0 /*mapper_id*/,
                          machine_view_hash);
-  // launcher.add_region_requirement(
-  //     RegionRequirement(input_lps[0], 0/*projection id*/,
-  //                       READ_ONLY, EXCLUSIVE, inputs[0]->region));
-  // launcher.add_field(0, FID_DATA);
+  // expert predictions
   launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
                                                     0 /*projection id*/,
-                                                    WRITE_ONLY,
+                                                    READ_ONLY,
                                                     EXCLUSIVE,
                                                     batch_inputs[0]->region));
   launcher.add_field(0, FID_DATA);
+  // expert assignment indices
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[1]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    batch_inputs[1]->region));
+  launcher.add_field(1, FID_DATA);
+  // topk_gate_preds
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[2]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    batch_inputs[2]->region));
+  launcher.add_field(2, FID_DATA);
   launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
                                                     0 /*projection id*/,
                                                     WRITE_ONLY,
                                                     EXCLUSIVE,
                                                     batch_outputs[0]->region));
-  launcher.add_field(1, FID_DATA);
-  launcher.add_region_requirement(
-      RegionRequirement(weights[0]->part,
-                        0 /*projection id*/,
-                        READ_ONLY,
-                        EXCLUSIVE,
-                        weights[0]->region,
-                        ff.cpu_offload ? MAP_TO_ZC_MEMORY : 0));
-  launcher.add_field(2, FID_DATA);
-  // launcher.add_region_requirement(
-  //     RegionRequirement(weights[1]->part, 0/*projection id*/,
-  //                       READ_ONLY, EXCLUSIVE, weights[1]->region));
-  // launcher.add_field(3, FID_DATA);
-  if (ff.config.computationMode == COMP_MODE_TRAINING) {
-    // Add inputs[0].region_grad to avoid Legion warning
-    // launcher.add_region_requirement(
-    //    RegionRequirement(input_grad_lps[0], 0/*projection id*/,
-    //        WRITE_ONLY, EXCLUSIVE, inputs[0].region_grad));
-    // launcher.add_field(2, FID_DATA);
+  launcher.add_field(3, FID_DATA);
+  launcher.add_region_requirement(RegionRequirement(weights[0]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    weights[0]->region));
+  launcher.add_field(4, FID_DATA);
+  if (use_bias) {
+    launcher.add_region_requirement(RegionRequirement(weights[1]->part,
+                                                      0 /*projection id*/,
+                                                      READ_ONLY,
+                                                      EXCLUSIVE,
+                                                      weights[1]->region));
+    launcher.add_field(5, FID_DATA);
   }
   FutureMap fm = runtime->execute_index_space(ctx, launcher);
   fm.wait_all_results();
   set_opmeta_from_futuremap_inference(ff, fm, batch_outputs[0]);
 }
 
-/*
-  regions[0](O): output
-  regions[1](I): kernel
-  regions[2](I): bias
-*/
-OpMeta *Linear::init_task(Task const *task,
-                          std::vector<PhysicalRegion> const &regions,
-                          Context ctx,
-                          Runtime *runtime) {
-  Linear const *linear = (Linear *)task->args;
-  FFHandler handle = *((FFHandler const *)task->local_args);
-  GenericTensorAccessorW output =
-      helperGetGenericTensorAccessorWO(linear->inputs[0]->data_type,
-                                       regions[0],
-                                       task->regions[0],
-                                       FID_DATA,
-                                       ctx,
-                                       runtime);
-  switch (output.domain.get_dim()) {
-#define DIMFUNC(DIM)                                                           \
-  case DIM:                                                                    \
-    if (output.data_type == DT_HALF) {                                         \
-      if (linear->quantization_type != DT_NONE) {                              \
-        return init_task_with_dim<half, char, DIM>(                            \
-            task, regions, ctx, runtime);                                      \
-      } else {                                                                 \
-        return init_task_with_dim<half, half, DIM>(                            \
-            task, regions, ctx, runtime);                                      \
-      }                                                                        \
-    } else if (output.data_type == DT_FLOAT) {                                 \
-      if (linear->quantization_type != DT_NONE) {                              \
-        return init_task_with_dim<float, char, DIM>(                           \
-            task, regions, ctx, runtime);                                      \
-      } else {                                                                 \
-        return init_task_with_dim<float, float, DIM>(                          \
-            task, regions, ctx, runtime);                                      \
-      }                                                                        \
-    } else {                                                                   \
-      assert(false && "Unsupported data type");                                \
-    }
-    LEGION_FOREACH_N(DIMFUNC)
-#undef DIMFUNC
-    default:
-      assert(false);
+void Experts::init(FFModel const &ff) {
+  assert(check_output_input_weight_same_parallel_is());
+  parallel_is = outputs[0]->parallel_is;
+  ArgumentMap argmap;
+  Context ctx = ff.config.lg_ctx;
+  Runtime *runtime = ff.config.lg_hlr;
+  set_argumentmap_for_init(ff, argmap);
+  IndexLauncher launcher(EXPERTS_INIT_TASK_ID,
+                         parallel_is,
+                         TaskArgument(this, sizeof(Experts)),
+                         argmap,
+                         Predicate::TRUE_PRED,
+                         false /*must*/,
+                         0 /*mapper_id*/,
+                         outputs[0]->machine_view.hash());
+  // expert predictions
+  launcher.add_region_requirement(RegionRequirement(inputs[0]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    inputs[0]->region));
+  launcher.add_field(0, FID_DATA);
+  // expert assignment indices
+  launcher.add_region_requirement(RegionRequirement(inputs[1]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    inputs[1]->region));
+  launcher.add_field(1, FID_DATA);
+  // topk_gate_preds
+  launcher.add_region_requirement(RegionRequirement(inputs[2]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    inputs[2]->region));
+  launcher.add_field(2, FID_DATA);
+  launcher.add_region_requirement(RegionRequirement(outputs[0]->part,
+                                                    0 /*projection id*/,
+                                                    WRITE_ONLY,
+                                                    EXCLUSIVE,
+                                                    outputs[0]->region));
+  launcher.add_field(3, FID_DATA);
+  launcher.add_region_requirement(RegionRequirement(weights[0]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    weights[0]->region));
+  launcher.add_field(4, FID_DATA);
+  if (use_bias) {
+    launcher.add_region_requirement(RegionRequirement(weights[1]->part,
+                                                      0 /*projection id*/,
+                                                      READ_ONLY,
+                                                      EXCLUSIVE,
+                                                      weights[1]->region));
+    launcher.add_field(5, FID_DATA);
   }
-  return NULL;
+  FutureMap fm = runtime->execute_index_space(ctx, launcher);
+  fm.wait_all_results();
+  set_opmeta_from_futuremap(ff, fm);
 }
 
-template <typename DT, typename WT, int NDIM>
-OpMeta *Linear::init_task_with_dim(Task const *task,
-                                   std::vector<PhysicalRegion> const &regions,
-                                   Context ctx,
-                                   Runtime *runtime) {
-  assert(regions.size() == task->regions.size());
-  assert(regions.size() == 2 || regions.size() == 3);
-  Linear const *linear = (Linear *)task->args;
+OpMeta *Experts::init_task(Task const *task,
+                           std::vector<PhysicalRegion> const &regions,
+                           Context ctx,
+                           Runtime *runtime) {
+  Experts const *exp = (Experts *)task->args;
   FFHandler handle = *((FFHandler const *)task->local_args);
-  // TensorAccessorR<float, 2> acc_input(
-  //     regions[0], task->regions[0], FID_DATA, ctx, runtime);
-  TensorAccessorR<DT, NDIM> acc_input(
-      regions[0], task->regions[0], FID_DATA, ctx, runtime);
-  TensorAccessorW<DT, NDIM> acc_output(regions[1],
-                                       task->regions[1],
-                                       FID_DATA,
-                                       ctx,
-                                       runtime,
-                                       false /*readOutput*/);
-  TensorAccessorR<WT, NDIM> acc_kernel(
-      regions[2], task->regions[2], FID_DATA, ctx, runtime);
-
-  // TensorAccessorR<float, 1> acc_bias(
-  //     regions[3], task->regions[3], FID_DATA, ctx, runtime);
-  int in_dim = acc_input.rect.hi[0] - acc_input.rect.lo[0] + 1;
-  // int in_dim = acc_kernel.rect.hi[0] - acc_kernel.rect.lo[0] + 1;
-  int out_dim = acc_output.rect.hi[0] - acc_output.rect.lo[0] + 1;
-  int batch_size = acc_output.rect.volume() / out_dim;
-  // printf("init linear (input): in_dim(%d) out_dim(%d) batch_size(%d)\n",
-  //        in_dim,
-  //        out_dim,
-  //        batch_size);
-  Memory gpu_mem = get_proc_mem(Machine::get_machine(), task->target_proc);
-  MemoryAllocator gpu_mem_allocator(gpu_mem);
-  if (linear->offload) {
-    // cpu-offload enabled
-    // use offload_reserved_space
-    gpu_mem_allocator.register_reserved_work_space(
-        handle.offload_reserve_space, handle.offload_reserve_space_size);
-  }
-
-  LinearMeta *m = new LinearMeta(
-      handle, batch_size, linear, gpu_mem_allocator, in_dim * out_dim);
-  m->activation = linear->activation;
-  m->kernel_reg_type = linear->kernel_reg_type;
-  m->kernel_reg_lambda = linear->kernel_reg_lambda;
-  m->use_bias = linear->use_bias;
-  m->add_bias_only_once = linear->add_bias_only_once;
-  m->profiling = linear->profiling;
-  m->inference_debugging = linear->inference_debugging;
-  m->trainable_inputs[0] = linear->trainable_inputs[0];
-  m->weight_ptr_type = m->input_type[0];
-  m->quantization_type = linear->quantization_type;
-  m->offload = linear->offload;
-  std::strcpy(m->op_name, linear->name);
-  m->layer_guid = linear->layer_guid;
-
-  init_kernel(m, batch_size, out_dim);
-
+  ExpertsMeta *m = new ExpertsMeta(handle, exp);
+  m->profiling = exp->profiling;
+  m->inference_debugging = exp->inference_debugging;
+  std::strcpy(m->op_name, exp->name);
+  m->layer_guid = exp->layer_guid;
   return m;
 }
 
-void Linear::forward(FFModel const &ff) {
+void Experts::forward(FFModel const &ff) {
+  // assert(false && "Experts is designed for inference only");
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
   set_argumentmap_for_forward(ff, argmap);
-  IndexLauncher launcher(LINEAR_FWD_TASK_ID,
+  IndexLauncher launcher(EXPERTS_FWD_TASK_ID,
                          parallel_is,
                          TaskArgument(nullptr, 0),
                          argmap,
@@ -541,158 +611,57 @@ void Linear::forward(FFModel const &ff) {
                          false /*must*/,
                          0 /*mapper_id*/,
                          outputs[0]->machine_view.hash());
+  // expert predictions
   launcher.add_region_requirement(RegionRequirement(inputs[0]->part,
                                                     0 /*projection id*/,
                                                     READ_ONLY,
                                                     EXCLUSIVE,
                                                     inputs[0]->region));
   launcher.add_field(0, FID_DATA);
+  // expert assignment indices
+  launcher.add_region_requirement(RegionRequirement(inputs[1]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    inputs[1]->region));
+  launcher.add_field(1, FID_DATA);
+  // topk_gate_preds
+  launcher.add_region_requirement(RegionRequirement(inputs[2]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    inputs[2]->region));
+  launcher.add_field(2, FID_DATA);
+  // expert output per token (only the chosen experts have non-zero
+  // contributions)
   launcher.add_region_requirement(RegionRequirement(outputs[0]->part,
                                                     0 /*projection id*/,
                                                     WRITE_ONLY,
                                                     EXCLUSIVE,
                                                     outputs[0]->region));
-  launcher.add_field(1, FID_DATA);
+  launcher.add_field(3, FID_DATA);
   launcher.add_region_requirement(RegionRequirement(weights[0]->part,
                                                     0 /*projection id*/,
                                                     READ_ONLY,
                                                     EXCLUSIVE,
                                                     weights[0]->region));
-  launcher.add_field(2, FID_DATA);
-  runtime->execute_index_space(ctx, launcher);
-}
-
-FutureMap Linear::inference(FFModel const &ff,
-                            BatchConfigFuture const &bc,
-                            std::vector<ParallelTensor> const &batch_inputs,
-                            std::vector<ParallelTensor> const &batch_outputs,
-                            MachineView const *mv) {
-  ArgumentMap argmap;
-  Context ctx = ff.config.lg_ctx;
-  Runtime *runtime = ff.config.lg_hlr;
-  parallel_is = batch_outputs[0]->parallel_is;
-  MachineView const *view = mv ? mv : &batch_outputs[0]->machine_view;
-  set_argumentmap_for_inference(ff, argmap, batch_outputs[0]);
-  size_t machine_view_hash = view->hash();
-  /* std::cout << "Linear op machine_view: " << *(MachineView const *)mv
-            << std::endl; */
-  IndexLauncher launcher(LINEAR_INF_TASK_ID,
-                         parallel_is,
-                         TaskArgument(nullptr, 0),
-                         argmap,
-                         Predicate::TRUE_PRED,
-                         false /*must*/,
-                         0 /*mapper_id*/,
-                         machine_view_hash);
-  launcher.add_future(bc);
-  launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
-                                                    0 /*projection id*/,
-                                                    READ_ONLY,
-                                                    EXCLUSIVE,
-                                                    batch_inputs[0]->region));
-  launcher.add_field(0, FID_DATA);
-  launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
-                                                    0 /*projection id*/,
-                                                    WRITE_ONLY,
-                                                    EXCLUSIVE,
-                                                    batch_outputs[0]->region));
-  launcher.add_field(1, FID_DATA);
-  launcher.add_region_requirement(
-      RegionRequirement(weights[0]->part,
-                        0 /*projection id*/,
-                        READ_ONLY,
-                        EXCLUSIVE,
-                        weights[0]->region,
-                        ff.cpu_offload ? MAP_TO_ZC_MEMORY : 0));
-  launcher.add_field(2, FID_DATA);
+  launcher.add_field(4, FID_DATA);
   if (use_bias) {
     launcher.add_region_requirement(RegionRequirement(weights[1]->part,
                                                       0 /*projection id*/,
                                                       READ_ONLY,
                                                       EXCLUSIVE,
                                                       weights[1]->region));
-    launcher.add_field(3, FID_DATA);
+    launcher.add_field(5, FID_DATA);
   }
-  return runtime->execute_index_space(ctx, launcher);
+  runtime->execute_index_space(ctx, launcher);
 }
 
-void Linear::inference_task(Task const *task,
-                            std::vector<PhysicalRegion> const &regions,
-                            Context ctx,
-                            Runtime *runtime) {
-  Domain input_domain = runtime->get_index_space_domain(
-      ctx, task->regions[0].region.get_index_space());
-  LinearMeta *m = *((LinearMeta **)task->local_args);
-  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
-  if (bc->num_tokens == 0) {
-    return;
-  }
-  assert(regions.size() == (3 + static_cast<size_t>(m->use_bias)));
-  assert(task->regions.size() == (3 + static_cast<size_t>(m->use_bias)));
-  if (m->quantization_type == DT_NONE) {
-    assert(m->input_type[0] == m->weight_type[0]);
-  }
-  assert(m->input_type[0] == m->output_type[0]);
-
-  GenericTensorAccessorR input = helperGetGenericTensorAccessorRO(
-      m->input_type[0], regions[0], task->regions[0], FID_DATA, ctx, runtime);
-  GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
-      m->output_type[0], regions[1], task->regions[1], FID_DATA, ctx, runtime);
-  GenericTensorAccessorR weight = helperGetGenericTensorAccessorRO(
-      m->weight_type[0], regions[2], task->regions[2], FID_DATA, ctx, runtime);
-  int in_dim = input.domain.hi()[0] - input.domain.lo()[0] + 1;
-  int out_dim = output.domain.hi()[0] - output.domain.lo()[0] + 1;
-  assert((weight.domain.hi()[0] - weight.domain.lo()[0] + 1) == in_dim);
-  assert((weight.domain.hi()[1] - weight.domain.lo()[1] + 1) == out_dim);
-  assert(weight.domain.get_volume() == in_dim * out_dim);
-
-  int batch_size = bc->num_active_infr_tokens();
-  GenericTensorAccessorR bias;
-  if (m->use_bias &&
-      !(m->add_bias_only_once && task->index_point.point_data[0] != 0)) {
-    bias = helperGetGenericTensorAccessorRO(m->weight_type[1],
-                                            regions[3],
-                                            task->regions[3],
-                                            FID_DATA,
-                                            ctx,
-                                            runtime);
-    assert(bias.domain.get_volume() == static_cast<size_t>(out_dim));
-  }
-  inference_kernel_wrapper(m,
-                           bc,
-                           input.ptr,
-                           output.ptr,
-                           weight.ptr,
-                           bias.ptr,
-                           in_dim,
-                           out_dim,
-                           batch_size);
-  if (m->inference_debugging) {
-    assert(task->index_point.get_dim() == 1);
-    int shard_id = task->index_point.point_data[0];
-    std::vector<GenericTensorAccessorR> weights_accessors;
-    weights_accessors.push_back(weight);
-    if (m->use_bias &&
-        !(m->add_bias_only_once && task->index_point.point_data[0] != 0)) {
-      weights_accessors.push_back(bias);
-    }
-    Linear::save_inference_tensors_to_file(
-        m, shard_id, bc, {input}, weights_accessors, {output});
-    printf("\tw=[%i,%i].T @ in=[%i,%i] -> out=[%i,%i]\n",
-           in_dim,
-           out_dim,
-           in_dim,
-           bc->num_tokens,
-           out_dim,
-           bc->num_tokens);
-  }
-}
-
-FutureMap Linear::peft_bwd(FFModel const &ff,
-                           BatchConfigFuture const &bc,
-                           std::vector<ParallelTensor> const &batch_inputs,
-                           std::vector<ParallelTensor> const &batch_outputs,
-                           MachineView const *mv) {
+FutureMap Experts::inference(FFModel const &ff,
+                             BatchConfigFuture const &bc,
+                             std::vector<ParallelTensor> const &batch_inputs,
+                             std::vector<ParallelTensor> const &batch_outputs,
+                             MachineView const *mv) {
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -700,9 +669,10 @@ FutureMap Linear::peft_bwd(FFModel const &ff,
   MachineView const *view = mv ? mv : &batch_outputs[0]->machine_view;
   set_argumentmap_for_inference(ff, argmap, batch_outputs[0]);
   size_t machine_view_hash = view->hash();
-  /* std::cout << "Linear op machine_view: " << *(MachineView const *)mv
+  /* std::cout << "Experts op machine_view: " << *(MachineView const *)mv
             << std::endl; */
-  IndexLauncher launcher(LINEAR_PEFT_BWD_TASK_ID,
+  // int num_active_infr_tokens = bc->num_active_infr_tokens();
+  IndexLauncher launcher(EXPERTS_INF_TASK_ID,
                          parallel_is,
                          TaskArgument(nullptr, 0),
                          argmap,
@@ -711,863 +681,492 @@ FutureMap Linear::peft_bwd(FFModel const &ff,
                          0 /*mapper_id*/,
                          machine_view_hash);
   launcher.add_future(bc);
-  launcher.add_region_requirement(
-      RegionRequirement(batch_inputs[0]->part_grad,
-                        0 /*projection id*/,
-                        reset_input_grads[0] ? WRITE_ONLY : READ_WRITE,
-                        EXCLUSIVE,
-                        batch_inputs[0]->region_grad));
+  // expert predictions
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[0]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    batch_inputs[0]->region));
   launcher.add_field(0, FID_DATA);
-  launcher.add_region_requirement(
-      RegionRequirement(batch_outputs[0]->part_grad,
-                        0 /*projection id*/,
-                        READ_WRITE,
-                        EXCLUSIVE,
-                        batch_outputs[0]->region_grad));
+  // expert assignment indices
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[1]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    batch_inputs[1]->region));
   launcher.add_field(1, FID_DATA);
-  launcher.add_region_requirement(
-      RegionRequirement(weights[0]->part,
-                        0 /*projection id*/,
-                        READ_ONLY,
-                        EXCLUSIVE,
-                        weights[0]->region,
-                        ff.cpu_offload ? MAP_TO_ZC_MEMORY : 0));
+  // topk_gate_preds
+  launcher.add_region_requirement(RegionRequirement(batch_inputs[2]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    batch_inputs[2]->region));
   launcher.add_field(2, FID_DATA);
+  // expert output per token (only the chosen experts have non-zero
+  // contributions)
+  launcher.add_region_requirement(RegionRequirement(batch_outputs[0]->part,
+                                                    0 /*projection id*/,
+                                                    WRITE_ONLY,
+                                                    EXCLUSIVE,
+                                                    batch_outputs[0]->region));
+  launcher.add_field(3, FID_DATA);
+  launcher.add_region_requirement(RegionRequirement(weights[0]->part,
+                                                    0 /*projection id*/,
+                                                    READ_ONLY,
+                                                    EXCLUSIVE,
+                                                    weights[0]->region));
+  launcher.add_field(4, FID_DATA);
+  if (use_bias) {
+    launcher.add_region_requirement(RegionRequirement(weights[1]->part,
+                                                      0 /*projection id*/,
+                                                      READ_ONLY,
+                                                      EXCLUSIVE,
+                                                      weights[1]->region));
+    launcher.add_field(5, FID_DATA);
+  }
   return runtime->execute_index_space(ctx, launcher);
 }
 
-void Linear::peft_bwd_task(Task const *task,
-                           std::vector<PhysicalRegion> const &regions,
-                           Context ctx,
-                           Runtime *runtime) {
-  Domain input_domain = runtime->get_index_space_domain(
-      ctx, task->regions[0].region.get_index_space());
-  LinearMeta *m = *((LinearMeta **)task->local_args);
+void Experts::inference_task(Task const *task,
+                             std::vector<PhysicalRegion> const &regions,
+                             Context ctx,
+                             Runtime *runtime) {
+  assert(regions.size() == task->regions.size());
+
+  ExpertsMeta *m = *((ExpertsMeta **)task->local_args);
   BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
-  if (bc->num_active_peft_tokens() == 0) {
+  if (bc->num_tokens == 0) {
     return;
   }
-  assert(regions.size() == 3);
-  assert(task->regions.size() == 3);
-  if (m->quantization_type == DT_NONE) {
-    assert(m->input_type[0] == m->weight_type[0]);
-  }
-  assert(m->input_type[0] == m->output_type[0]);
 
-  GenericTensorAccessorW input_grad = helperGetGenericTensorAccessorRW(
-      m->input_type[0], regions[0], task->regions[0], FID_DATA, ctx, runtime);
-  GenericTensorAccessorW output_grad = helperGetGenericTensorAccessorRW(
-      m->output_type[0], regions[1], task->regions[1], FID_DATA, ctx, runtime);
-  GenericTensorAccessorR weight = helperGetGenericTensorAccessorRO(
-      m->weight_type[0], regions[2], task->regions[2], FID_DATA, ctx, runtime);
-  int in_dim = input_grad.domain.hi()[0] - input_grad.domain.lo()[0] + 1;
-  int out_dim = output_grad.domain.hi()[0] - output_grad.domain.lo()[0] + 1;
+  int num_experts = m->num_experts;
+  bool use_bias = m->use_bias;
+  assert(regions.size() - 4 == (1 + use_bias));
 
-  int num_infr_tokens = bc->num_active_infr_tokens();
-  int num_peft_tokens = bc->num_active_peft_tokens();
-  if (m->inference_debugging) {
-    assert(task->index_point.get_dim() == 1);
-    int shard_id = task->index_point.point_data[0];
-    Linear::save_inference_tensors_to_file(
-        m, shard_id, bc, {input_grad}, {weight}, {output_grad}, false, true);
-    printf("\tw=[%i,%i] @ out_grad=[%i,%i] -> in_grad[%i,%i]\n",
-           in_dim,
-           out_dim,
-           out_dim,
-           num_peft_tokens,
-           in_dim,
-           num_peft_tokens);
-  }
-  peft_bwd_kernel_wrapper(m,
-                          bc,
-                          input_grad.ptr,
-                          output_grad.ptr,
-                          weight.ptr,
-                          in_dim,
-                          out_dim,
-                          num_infr_tokens,
-                          num_peft_tokens);
-  if (m->inference_debugging) {
-    assert(task->index_point.get_dim() == 1);
-    int shard_id = task->index_point.point_data[0];
-    Linear::save_inference_tensors_to_file(
-        m, shard_id, bc, {input_grad}, {weight}, {output_grad}, false);
-  }
-}
+  // get input, indices, topk_gate_preds, outputs
+  GenericTensorAccessorR input = helperGetGenericTensorAccessorRO(
+      DT_FLOAT, regions[0], task->regions[0], FID_DATA, ctx, runtime);
+  GenericTensorAccessorR indices = helperGetGenericTensorAccessorRO(
+      DT_INT32, regions[1], task->regions[1], FID_DATA, ctx, runtime);
+  GenericTensorAccessorR topk_gate_preds = helperGetGenericTensorAccessorRO(
+      DT_FLOAT, regions[2], task->regions[2], FID_DATA, ctx, runtime);
+  GenericTensorAccessorW output = helperGetGenericTensorAccessorWO(
+      DT_FLOAT, regions[3], task->regions[3], FID_DATA, ctx, runtime);
 
-void Linear::forward_task(Task const *task,
-                          std::vector<PhysicalRegion> const &regions,
-                          Context ctx,
-                          Runtime *runtime) {
+  float const *input_ptr = input.get_float_ptr();
+  int const *indices_ptr = indices.get_int32_ptr();
+  float const *topk_gate_pred_ptr = topk_gate_preds.get_float_ptr();
+  float *output_ptr = output.get_float_ptr();
+  assert(input_ptr != nullptr && indices_ptr != nullptr &&
+         topk_gate_pred_ptr != nullptr && output_ptr != nullptr);
+
   Domain input_domain = runtime->get_index_space_domain(
       ctx, task->regions[0].region.get_index_space());
-  LinearMeta const *m = *((LinearMeta **)task->local_args);
-  if (m->quantization_type == DT_NONE) {
-    assert(m->input_type[0] == m->weight_type[0]);
-  }
-  assert(m->input_type[0] == m->output_type[0]);
-  switch (input_domain.get_dim()) {
-#define DIMFUNC(DIM)                                                           \
-  case DIM:                                                                    \
-    if (m->output_type[0] == DT_HALF) {                                        \
-      if (m->quantization_type != DT_NONE) {                                   \
-        return forward_task_with_dim<half, char, DIM>(                         \
-            task, regions, ctx, runtime);                                      \
-      } else {                                                                 \
-        return forward_task_with_dim<half, half, DIM>(                         \
-            task, regions, ctx, runtime);                                      \
-      }                                                                        \
-    } else if (m->output_type[0] == DT_FLOAT) {                                \
-      if (m->quantization_type != DT_NONE) {                                   \
-        return forward_task_with_dim<float, char, DIM>(                        \
-            task, regions, ctx, runtime);                                      \
-      } else {                                                                 \
-        return forward_task_with_dim<float, float, DIM>(                       \
-            task, regions, ctx, runtime);                                      \
-      }                                                                        \
-    } else {                                                                   \
-      assert(false && "Unsupported data type");                                \
+  Domain indices_domain = runtime->get_index_space_domain(
+      ctx, task->regions[1].region.get_index_space());
+  Domain topk_gate_pred_domain = runtime->get_index_space_domain(
+      ctx, task->regions[2].region.get_index_space());
+  Domain output_domain = runtime->get_index_space_domain(
+      ctx, task->regions[3].region.get_index_space());
+
+  int input_dims = input_domain.get_dim();
+  int indices_dims = indices_domain.get_dim();
+  int topk_gate_pred_dims = topk_gate_pred_domain.get_dim();
+  int output_dims = output_domain.get_dim();
+  assert(input_dims == indices_dims);
+  assert(indices_dims == topk_gate_pred_dims);
+  assert(input_dims == output_dims);
+
+  int replica_dim = input_dims - 1;
+  int samples_index = input_dims - 2;
+
+  coord_t data_dim = input_domain.hi()[0] - input_domain.lo()[0] + 1;
+  coord_t batch_size =
+      input_domain.hi()[samples_index] - input_domain.lo()[samples_index] + 1;
+  coord_t chosen_experts = indices_domain.hi()[0] - indices_domain.lo()[0] + 1;
+  coord_t out_dim = output_domain.hi()[0] - output_domain.lo()[0] + 1;
+  coord_t num_replicas =
+      input_domain.hi()[replica_dim] - input_domain.lo()[replica_dim] + 1;
+  assert(data_dim == m->data_dim);
+  assert(out_dim == m->out_dim);
+  assert(chosen_experts == m->num_chosen_experts);
+  assert(chosen_experts ==
+         topk_gate_pred_domain.hi()[0] - topk_gate_pred_domain.lo()[0] + 1);
+
+  for (int i = 1; i < input_dims; i++) {
+    int a = input_domain.hi()[i] - input_domain.lo()[i] + 1;
+    int b = indices_domain.hi()[i] - indices_domain.lo()[i] + 1;
+    int c = topk_gate_pred_domain.hi()[i] - topk_gate_pred_domain.lo()[i] + 1;
+    assert(a == b && b == c);
+    if (i >= 1 && i < samples_index) {
+      batch_size *= a;
     }
-    LEGION_FOREACH_N(DIMFUNC)
-#undef DIMFUNC
-    default:
-      assert(false);
+  }
+  assert(batch_size == m->effective_batch_size);
+
+  assert(batch_size <= MAX_BATCH_SIZE &&
+         "batch size exceeds MAX_BATCH_SIZE defined in experts.h");
+  assert(
+      num_experts <= MAX_EXPERTS_PER_BLOCK &&
+      "number of experts exceeds MAX_EXPERTS_PER_BLOCK defined in experts.h");
+
+  for (int j = 1; j < input_dims; j++) {
+    int a = input_domain.hi()[j] - input_domain.lo()[j] + 1;
+    int b = output_domain.hi()[j] - output_domain.lo()[j] + 1;
+    assert(a == b);
+  }
+
+  // get weights
+  float const *weights_ptr = helperGetTensorPointerRO<float>(
+      regions[4], task->regions[4], FID_DATA, ctx, runtime);
+  assert(weights_ptr != nullptr);
+  Domain weights_domain = runtime->get_index_space_domain(
+      ctx, task->regions[4].region.get_index_space());
+  int weights_dims = weights_domain.get_dim();
+  assert(weights_dims == 3);
+  int nparams_weight =
+      (m->experts_num_layers == 1)
+          ? (data_dim * out_dim)
+          : m->experts_internal_dim_size * (data_dim + out_dim);
+  assert(weights_domain.hi()[0] - weights_domain.lo()[0] + 1 == nparams_weight);
+  assert(weights_domain.hi()[1] - weights_domain.lo()[1] + 1 == num_experts);
+  assert(weights_domain.hi()[2] - weights_domain.lo()[2] + 1 == num_replicas);
+
+  float const *bias_ptr = nullptr;
+  int nparams_bias = -1;
+  if (use_bias) {
+    bias_ptr = helperGetTensorPointerRO<float>(
+        regions[5], task->regions[5], FID_DATA, ctx, runtime);
+    Domain bias_domain = runtime->get_index_space_domain(
+        ctx, task->regions[5].region.get_index_space());
+    int bias_dims = bias_domain.get_dim();
+    assert(bias_dims == 3);
+    nparams_bias = (m->experts_num_layers == 1)
+                       ? out_dim
+                       : (m->experts_internal_dim_size + out_dim);
+    assert(bias_domain.hi()[0] - bias_domain.lo()[0] + 1 == nparams_bias);
+    assert(bias_domain.hi()[1] - bias_domain.lo()[1] + 1 == num_experts);
+    assert(bias_domain.hi()[2] - bias_domain.lo()[2] + 1 == num_replicas);
+  }
+
+#ifdef INFERENCE_TESTS
+  if (DEBUG_MODE) {
+    std::cout << "forward_kernel_wrapper" << std::endl
+              << "-------------------------------" << std::endl;
+    std::cout << m->data_dim << std::endl;
+    std::cout << m->out_dim << std::endl;
+    std::cout << m->num_chosen_experts << std::endl;
+    std::cout << m->effective_batch_size << std::endl;
+    std::cout << m->experts_num_layers << std::endl;
+    std::cout << m->experts_internal_dim_size << std::endl;
+    std::cout << m->num_experts << std::endl;
+    std::cout << m->use_bias << std::endl;
+
+    /* ----------------Input Token--------------*/
+    float *cpu_input_ptr = new float[data_dim];
+    checkCUDA(cudaMemcpy(cpu_input_ptr,
+                         input_ptr,
+                         data_dim * sizeof(float),
+                         cudaMemcpyDeviceToHost));
+
+    srand(42);
+    float cpu_sum = 0;
+    for (int i = 0; i < data_dim; i++) {
+      // cpu_input_ptr[i] = (float)rand() / (float)RAND_MAX;
+      cpu_input_ptr[i] = float(i) / (float)data_dim;
+      cpu_sum += cpu_input_ptr[i];
+    }
+    std::cout << "[CPU] Token 0 sum = " << cpu_sum << std::endl;
+    std::cout << "Total token number = " << batch_size << std::endl;
+    for (int i = 0; i < batch_size; i++) {
+      checkCUDA(cudaMemcpy((float *)(input_ptr + i * data_dim),
+                           cpu_input_ptr,
+                           data_dim * sizeof(float),
+                           cudaMemcpyHostToDevice));
+    }
+    free(cpu_input_ptr);
+
+    /* ----------------indices--------------*/
+    int *cpu_indices_ptr = new int[chosen_experts * batch_size];
+    checkCUDA(cudaMemcpy(cpu_indices_ptr,
+                         indices_ptr,
+                         chosen_experts * batch_size * sizeof(int),
+                         cudaMemcpyDeviceToHost));
+    for (int i = 0; i < chosen_experts * 10; i++) {
+      if (i % 2 == 1) {
+        cpu_indices_ptr[i] += chosen_experts;
+      }
+    }
+    checkCUDA(cudaMemcpy((int *)indices_ptr,
+                         cpu_indices_ptr,
+                         chosen_experts * batch_size * sizeof(int),
+                         cudaMemcpyHostToDevice));
+    free(cpu_indices_ptr);
+
+    /* ----------------coefficient--------------*/
+    float *cpu_topk_gate_pred_ptr = new float[chosen_experts * batch_size];
+    checkCUDA(cudaMemcpy(cpu_topk_gate_pred_ptr,
+                         topk_gate_pred_ptr,
+                         chosen_experts * batch_size * sizeof(float),
+                         cudaMemcpyDeviceToHost));
+    for (int i = 0; i < chosen_experts * batch_size; i++) {
+      if (i % 2 == 0) {
+        cpu_topk_gate_pred_ptr[i] = 0.5;
+      } else {
+        cpu_topk_gate_pred_ptr[i] = 0.1;
+      }
+    }
+    checkCUDA(cudaMemcpy((float *)topk_gate_pred_ptr,
+                         cpu_topk_gate_pred_ptr,
+                         chosen_experts * batch_size * sizeof(float),
+                         cudaMemcpyHostToDevice));
+    free(cpu_topk_gate_pred_ptr);
+
+    /* ----------------Expert Weights--------------*/
+    assert(m->experts_num_layers == 2 || m->experts_num_layers == 1);
+    size_t layer0_size = m->experts_num_layers == 1
+                             ? data_dim * out_dim
+                             : data_dim * m->experts_internal_dim_size;
+    size_t layer1_size = m->experts_internal_dim_size * out_dim;
+    float *cpu_experts_0_layer0 = new float[layer0_size];
+    float *cpu_experts_1_layer0 = new float[layer0_size];
+    float *cpu_experts_0_layer1 =
+        m->experts_num_layers == 1 ? nullptr : new float[layer1_size];
+    float *cpu_experts_1_layer1 =
+        m->experts_num_layers == 1 ? nullptr : new float[layer1_size];
+    /*checkCUDA(cudaMemcpy(cpu_experts_0_layer0,
+                         weights_ptr,
+                         layer0_size * sizeof(float),
+                         cudaMemcpyDeviceToHost));
+    checkCUDA(cudaMemcpy(cpu_experts_1_layer0,
+                         weights_ptr[nparams_weight],
+                         layer0_size * sizeof(float),
+                         cudaMemcpyDeviceToHost));
+    if (m->experts_num_layers == 2) {
+      checkCUDA(cudaMemcpy(cpu_experts_0_layer1,
+                         weights_ptr[layer0_size],
+                         layer1_size * sizeof(float),
+                         cudaMemcpyDeviceToHost));
+      checkCUDA(cudaMemcpy(cpu_experts_1_layer1,
+                           weights_ptr[nparams_weight + layer0_size],
+                           layer1_size * sizeof(float),
+                           cudaMemcpyDeviceToHost));
+    }*/
+    cpu_sum = 0;
+    for (int i = 0; i < layer0_size; i++) {
+      cpu_experts_0_layer0[i] = float(i) / float(nparams_weight);
+      cpu_sum += cpu_experts_0_layer0[i];
+    }
+    if (m->experts_num_layers == 2) {
+      for (int i = 0; i < layer1_size; i++) {
+        cpu_experts_0_layer1[i] =
+            float(layer0_size + i) / float(nparams_weight);
+        cpu_sum += cpu_experts_0_layer1[i];
+      }
+    }
+    std::cout << "[CPU] Experts 0 weights sum = " << cpu_sum << std::endl;
+
+    cpu_sum = 0;
+    for (int i = 0; i < layer0_size; i++) {
+      cpu_experts_1_layer0[i] =
+          float(nparams_weight - i) / float(nparams_weight);
+      assert(cpu_experts_1_layer0[i] > 0);
+      cpu_sum += cpu_experts_1_layer0[i];
+    }
+    if (m->experts_num_layers == 2) {
+      for (int i = 0; i < layer1_size; i++) {
+        cpu_experts_1_layer1[i] =
+            float(nparams_weight - layer0_size + i) / float(nparams_weight);
+        assert(cpu_experts_1_layer1[i] > 0);
+        cpu_sum += cpu_experts_1_layer1[i];
+      }
+    }
+    std::cout << "[CPU] Experts 1 weights sum = " << cpu_sum << std::endl;
+
+    for (int i = 0; i < num_experts; i++) {
+      // first layer
+      checkCUDA(
+          cudaMemcpy((float *)&weights_ptr[nparams_weight * i],
+                     i % 2 == 0 ? cpu_experts_0_layer0 : cpu_experts_1_layer0,
+                     layer0_size * sizeof(float),
+                     cudaMemcpyHostToDevice));
+      // second layer
+      if (m->experts_num_layers == 2) {
+        checkCUDA(
+            cudaMemcpy((float *)&weights_ptr[nparams_weight * i + layer0_size],
+                       i % 2 == 0 ? cpu_experts_0_layer1 : cpu_experts_1_layer1,
+                       layer1_size * sizeof(float),
+                       cudaMemcpyHostToDevice));
+      }
+    }
+    free(cpu_experts_0_layer0);
+    free(cpu_experts_1_layer0);
+    free(cpu_experts_0_layer1);
+    free(cpu_experts_1_layer1);
+
+    /* ----------------Expert Bias--------------*/
+    if (use_bias) {
+      size_t layer0_size =
+          m->experts_num_layers == 1 ? out_dim : m->experts_internal_dim_size;
+      size_t layer1_size = out_dim;
+      float *bias_experts_0_layer0 = new float[layer0_size];
+      float *bias_experts_0_layer1 =
+          m->experts_num_layers == 1 ? nullptr : new float[layer1_size];
+
+      checkCUDA(cudaMemcpy(bias_experts_0_layer0,
+                           bias_ptr,
+                           layer0_size * sizeof(float),
+                           cudaMemcpyDeviceToHost));
+      cpu_sum = 0;
+      for (int i = 0; i < layer0_size; i++) {
+        cpu_sum += bias_experts_0_layer0[i];
+        // bias_experts_1[i] = 1.0f;
+      }
+      std::cout << "[CPU] Bias expert 0 (layer 0) sum = " << cpu_sum
+                << std::endl;
+
+      if (m->experts_num_layers == 2) {
+        checkCUDA(cudaMemcpy(bias_experts_0_layer1,
+                             (float *)&bias_ptr[layer0_size],
+                             layer1_size * sizeof(float),
+                             cudaMemcpyDeviceToHost));
+        cpu_sum = 0;
+        for (int i = 0; i < layer1_size; i++) {
+          cpu_sum += bias_experts_0_layer1[i];
+          // bias_experts_1[i] = 1.0f;
+        }
+        std::cout << "[CPU] Bias expert 0 (layer 1) sum = " << cpu_sum
+                  << std::endl;
+      }
+
+      for (int i = 0; i < num_experts; i++) {
+        checkCUDA(cudaMemcpy((float *)&bias_ptr[nparams_bias * i],
+                             bias_experts_0_layer0,
+                             layer0_size * sizeof(float),
+                             cudaMemcpyHostToDevice));
+        if (m->experts_num_layers == 2) {
+          checkCUDA(
+              cudaMemcpy((float *)&bias_ptr[nparams_bias * i + layer0_size],
+                         bias_experts_0_layer1,
+                         layer1_size * sizeof(float),
+                         cudaMemcpyHostToDevice));
+        }
+      }
+      free(bias_experts_0_layer0);
+      free(bias_experts_0_layer1);
+    }
+  }
+#endif
+  Experts::forward_kernel_wrapper(m,
+                                  input_ptr,
+                                  indices_ptr,
+                                  topk_gate_pred_ptr,
+                                  output_ptr,
+                                  weights_ptr,
+                                  bias_ptr,
+                                  bc->num_active_infr_tokens(),
+                                  chosen_experts,
+                                  batch_size,
+                                  out_dim);
+#ifdef INFERENCE_TESTS
+  if (DEBUG_MODE) {
+    /* ----------------Output after computation--------------*/
+    float *cpu_output_ptr = new float[batch_size * out_dim];
+    float cpu_sum = 0;
+    checkCUDA(cudaMemcpy(cpu_output_ptr,
+                         output_ptr,
+                         batch_size * out_dim * sizeof(float),
+                         cudaMemcpyDeviceToHost));
+    for (int j = 0; j < batch_size * out_dim; j += out_dim) {
+      cpu_sum = 0;
+      for (int i = 0; i < out_dim; i++) {
+        cpu_sum += cpu_output_ptr[j + i];
+      }
+      // if ((j/out_dim) < 50) std::cout << "[CPU] output " << (j/out_dim) << "
+      // sum = " << cpu_sum << std::endl;
+      if (cpu_sum > 0.0f) {
+        std::cout << "[CPU] output " << (j / out_dim) << " sum = " << cpu_sum
+                  << std::endl;
+      }
+    }
+    std::cout << "[CPU] output 0's 10th element = " << cpu_output_ptr[10]
+              << std::endl;
+    std::cout << "[CPU] output 0's 99th element = " << cpu_output_ptr[99]
+              << std::endl;
+    std::cout << "[CPU] output 0's 123th element = " << cpu_output_ptr[123]
+              << std::endl;
+
+    /* refrence output */
+    /*
+     * Input token sum = 391.5
+     * Expert 0 weights sum = 307327.5
+     * Expert 1 weights sum = 307328.47
+     *  ------------------
+     * experts 0's reulst = 153533.1
+     * experts 1's reulst = 153402.9
+     * Aggreated Result = 92106.836
+     * 10th element = 41.28053
+     * 99th element = 59.057823
+     * 123th element = 63.8517
+     */
+
+    free(cpu_output_ptr);
+  }
+#endif
+
+  if (m->inference_debugging) {
+    assert(task->index_point.get_dim() == 1);
+    int shard_id = task->index_point.point_data[0];
+    Experts::save_inference_tensors_to_file(
+        m, shard_id, bc, {input, indices, topk_gate_preds}, {}, {output});
   }
 }
 
-/*
-  regions[0](I); input
-  regions[1](O): output
-  regions[2](I): kernel
-  regions[3](I): bias
-*/
-template <typename DT, typename WT, int NDIM>
-void Linear::forward_task_with_dim(Task const *task,
-                                   std::vector<PhysicalRegion> const &regions,
-                                   Context ctx,
-                                   Runtime *runtime) {
-  // Linear* linear = (Linear*) task->args;
-  LinearMeta const *m = *((LinearMeta **)task->local_args);
-  assert(regions.size() == (3 + static_cast<size_t>(m->use_bias)));
-  assert(task->regions.size() == (3 + static_cast<size_t>(m->use_bias)));
-
-  TensorAccessorR<DT, NDIM> acc_input(
-      regions[0], task->regions[0], FID_DATA, ctx, runtime);
-  TensorAccessorW<DT, NDIM> acc_output(regions[1],
-                                       task->regions[1],
-                                       FID_DATA,
-                                       ctx,
-                                       runtime,
-                                       false /*readOutput*/);
-  TensorAccessorR<WT, NDIM> acc_kernel(
-      regions[2], task->regions[2], FID_DATA, ctx, runtime);
-  int in_dim = acc_input.rect.hi[0] - acc_input.rect.lo[0] + 1;
-  int out_dim = acc_output.rect.hi[0] - acc_output.rect.lo[0] + 1;
-  int batch_size = acc_output.rect.volume() / out_dim;
-  assert(acc_output.rect.volume() == static_cast<size_t>(out_dim * batch_size));
-  assert(acc_input.rect.volume() == static_cast<size_t>(in_dim * batch_size));
-  // assert(acc_kernel.rect.volume() == static_cast<size_t>(in_dim * out_dim));
-  DT const *acc_bias_ptr = nullptr;
-  if (m->use_bias &&
-      !(m->add_bias_only_once && task->index_point.point_data[0] != 0)) {
-    TensorAccessorR<DT, NDIM> acc_bias(
-        regions[3], task->regions[3], FID_DATA, ctx, runtime);
-    assert(acc_bias.rect.volume() == static_cast<size_t>(out_dim));
-    acc_bias_ptr = acc_bias.ptr;
-  }
-
-  forward_kernel_wrapper(m,
-                         acc_input.ptr,
-                         acc_output.ptr,
-                         acc_kernel.ptr,
-                         acc_bias_ptr,
-                         in_dim,
-                         out_dim,
-                         batch_size);
-}
-
-void Linear::backward(FFModel const &ff) {
-  assert(false && "Not implemented");
-}
-
-void Linear::backward_task(Task const *task,
+void Experts::forward_task(Task const *task,
                            std::vector<PhysicalRegion> const &regions,
                            Context ctx,
                            Runtime *runtime) {
-  assert(false && "Not implemented");
+  assert(false && "Experts is designed for inference only");
 }
 
-/*
-  regions[0](I): input
-  regions[1](I/O): replica_grad or input_grad
-  regions[2](I): output
-  regions[3](I/O): output_grad
-  regions[4](I): filter
-  regions[5](I/O): filter_grad
-  regions[6](I/O): bias_grad
-*/
-template <typename DT, int NDIM>
-void Linear::backward_task_with_dim(Task const *task,
-                                    std::vector<PhysicalRegion> const &regions,
-                                    Context ctx,
-                                    Runtime *runtime) {
-  assert(false && "Not implemented");
+void Experts::backward(FFModel const &ff) {
+  assert(false && "Experts is designed for inference only");
 }
 
-void Linear::print_layer(FFModel const &ff) {
-  printf("linear layer\n");
-  Context ctx = ff.config.lg_ctx;
-  Runtime *runtime = ff.config.lg_hlr;
-
-  RegionRequirement kernel_req(
-      weights[0]->region, READ_WRITE, EXCLUSIVE, weights[0]->region);
-  kernel_req.add_field(FID_DATA);
-  InlineLauncher kernel_launcher(kernel_req);
-  PhysicalRegion kernel_region = runtime->map_region(ctx, kernel_launcher);
-  kernel_region.wait_until_valid();
-
-  RegionRequirement bias_req(
-      weights[1]->region, READ_WRITE, EXCLUSIVE, weights[1]->region);
-  bias_req.add_field(FID_DATA);
-  InlineLauncher bias_launcher(bias_req);
-  PhysicalRegion bias_region = runtime->map_region(ctx, bias_launcher);
-  bias_region.wait_until_valid();
-
-  TensorAccessorW<float, 2> acc_kernel(
-      kernel_region, kernel_req, FID_DATA, ctx, runtime, true);
-  TensorAccessorW<float, 1> acc_bias(
-      bias_region, bias_req, FID_DATA, ctx, runtime, true);
-
-  float const *kernel_ptr = acc_kernel.ptr;
-  float const *bias_ptr = acc_bias.ptr;
-
-  size_t kernel_size = acc_kernel.rect.volume();
-  int kernel_dim1 = acc_kernel.rect.hi[0] - acc_kernel.rect.lo[0] + 1;
-  int kernel_dim2 = acc_kernel.rect.hi[1] - acc_kernel.rect.lo[1] + 1;
-  size_t bias_size = acc_bias.rect.volume();
-  printf("kernel, %p, %zu, [%d, %d]\n",
-         kernel_ptr,
-         kernel_size,
-         kernel_dim1,
-         kernel_dim2);
-  printf("bias, %p, %zu\n", bias_ptr, bias_size);
-
-  for (size_t i = 0; i < bias_size; i++) {
-    printf("%f ", bias_ptr[i]);
-  }
-  printf("\n");
-
-  for (size_t i = 0; i < kernel_size; i++) {
-    printf("%f ", kernel_ptr[i]);
-  }
-  printf("\n");
-
-  runtime->unmap_region(ctx, kernel_region);
-  runtime->unmap_region(ctx, bias_region);
+void Experts::backward_task(Task const *task,
+                            std::vector<PhysicalRegion> const &regions,
+                            Context ctx,
+                            Runtime *runtime) {
+  assert(false && "Experts is designed for inference only");
 }
 
-bool Linear::estimate_sync_cost(Simulator *sim,
-                                MachineView const &view,
-                                CostMetrics &cost_metrics) const {
-  // Estimate the cost of sync weights
-  ParallelTensorShape tensor_shape;
-  tensor_shape.num_dims = 3;
-  tensor_shape.data_type = inputs[0]->data_type;
-  tensor_shape.dims[0] = inputs[0]->dims[0];
-  tensor_shape.dims[1] = inputs[0]->dims[inputs[0]->num_dims - 1];
-  tensor_shape.dims[2] = inputs[0]->dims[inputs[0]->num_dims - 2];
-  tensor_shape.dims[1].size = out_channels;
-  tensor_shape.dims[1].degree = 1;
-  tensor_shape.dims[2].degree =
-      inputs[0]->dims[1].degree * inputs[0]->dims[2].degree;
-  tensor_shape.dims[2].size =
-      inputs[0]->dims[1].degree * inputs[0]->dims[2].degree;
-  cost_metrics.sync_time =
-      sim->default_estimate_sync_cost(tensor_shape, view, 1);
-  // printf("[Estimate Linear] name(%s) sync_time(%.4lf)\n", name,
-  // cost_metrics.sync_time);
-  return true;
+void Experts::print_layer(FFModel const &ff) {
+  return;
 }
 
-ParallelConfig Linear::get_random_parallel_config(FFModel const &ff) const {
-  if (!ff.config.enable_parameter_parallel) {
-    return Op::get_random_parallel_config(ff);
-  }
-  std::vector<int> batch_candidates;
-  std::vector<int> channel_candidates;
-  int batch = outputs[0]->dims[outputs[0]->num_dims - 1].size;
-  int channel = outputs[0]->dims[0].size;
-  int total_devices = ff.config.workersPerNode * ff.config.numNodes;
-  for (int i = 1; i <= ff.config.workersPerNode; i++) {
-    if (channel % i == 0) {
-      for (int j = 1; i * j <= total_devices; j++) {
-        if (batch % j == 0) {
-          batch_candidates.push_back(j);
-          channel_candidates.push_back(i);
-        }
-      }
-    }
-  }
-  assert(batch_candidates.size() > 0);
-  int idx = std::rand() % batch_candidates.size();
-  int num_par_c = channel_candidates[idx];
-  int num_par_b = batch_candidates[idx];
-  ParallelConfig pc;
-  pc.device_type = ParallelConfig::GPU;
-  pc.nDims = outputs[0]->num_dims;
-  pc.dim[0] = num_par_c;
-  pc.dim[pc.nDims - 1] = num_par_b;
-  for (int i = 1; i < pc.nDims - 1; i++) {
-    pc.dim[i] = 1;
-  }
-  int start_idx = std::rand() % (total_devices - num_par_c * num_par_b + 1);
-  start_idx = start_idx - start_idx % num_par_c;
-  for (int i = 0; i < num_par_c * num_par_b; i++) {
-    pc.device_ids[i] = start_idx + i;
-  }
-  return pc;
-}
-
-bool Linear::get_int_parameter(PMParameter para, int *value) const {
-  switch (para) {
-    case PM_ACTI:
-      *value = (int)activation;
-      return true;
-    default:
-      return Op::get_int_parameter(para, value);
-  }
-}
-
-bool Linear::is_valid_parallel_config(FFModel const &ff,
-                                      ParallelConfig const &pc) const {
-  if (!ff.config.enable_parameter_parallel) {
-    return Op::is_valid_parallel_config(ff, pc);
-  }
-  // Support data and parameter parallel
-  if (pc.nDims != outputs[0]->num_dims) {
-    return false;
-  }
-  for (int i = 1; i < pc.nDims - 1; i++) {
-    if (pc.dim[i] != 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool Linear::measure_operator_cost(Simulator *sim,
-                                   MachineView const &mv,
-                                   CostMetrics &cost_metrics) const {
-  ParallelTensorBase sub_output, sub_input;
-  if (!outputs[0]->get_sub_tensor(mv, sub_output)) {
-    return false;
-  }
-  if (!inputs[0]->get_sub_tensor(mv, sub_input)) {
-    return false;
-  }
-  int input_c = sub_input.dims[0].size;
-  int input_n = sub_input.get_volume() / input_c;
-  int output_c = sub_output.dims[0].size;
-  int output_n = sub_output.get_volume() / output_c;
-
-  MemoryAllocator gpu_mem_allocator(sim->memory);
-  LinearMeta *m = new LinearMeta(
-      sim->handler, output_n, this, gpu_mem_allocator, input_c * output_c);
-  m->activation = activation;
-  m->kernel_reg_type = kernel_reg_type;
-  m->kernel_reg_lambda = kernel_reg_lambda;
-  m->input_type[0] = inputs[0]->data_type;
-  m->weight_type[0] = this->data_type;
-  m->output_type[0] = outputs[0]->data_type;
-  assert(m->profiling == false);
-
-  init_kernel(m, output_n, output_c);
-
-  // allocate tensors in simulator
-  sim->free_all();
-  void *input_ptr = sim->allocate(sub_input.get_volume(), inputs[0]->data_type);
-  cost_metrics.inputs_memory += cost_metrics.total_mem_diff_from(sim->offset);
-
-  void *output_ptr =
-      sim->allocate(sub_output.get_volume(), outputs[0]->data_type);
-  cost_metrics.outputs_memory += cost_metrics.total_mem_diff_from(sim->offset);
-
-  void *kernel_ptr = sim->allocate((size_t)output_c * input_c, this->data_type);
-  void *bias_ptr = sim->allocate(output_c, this->data_type);
-  assert(bias_ptr != NULL);
-  cost_metrics.weights_memory += cost_metrics.total_mem_diff_from(sim->offset);
-
-  bool out_of_memory = (input_ptr == NULL) || (output_ptr == NULL) ||
-                       (kernel_ptr == NULL) || (bias_ptr == NULL);
-  if (out_of_memory) {
-    cost_metrics.forward_time = Simulator::MAXIMUM_TASK_RUN_TIME;
-    cost_metrics.backward_time = Simulator::MAXIMUM_TASK_RUN_TIME;
-    return true;
-  }
-  std::function<void()> forward, backward;
-  forward = [&] {
-    forward_kernel_wrapper(m,
-                           input_ptr,
-                           output_ptr,
-                           kernel_ptr,
-                           bias_ptr,
-                           input_c,
-                           output_c,
-                           input_n);
-  };
-  if (sim->computationMode == COMP_MODE_TRAINING) {
-    void *input_grad_ptr = NULL;
-    if (trainable_inputs[0]) {
-      input_grad_ptr =
-          sim->allocate(sub_input.get_volume(), inputs[0]->data_type);
-    } else {
-      input_grad_ptr =
-          sim->allocate(sub_input.get_volume(), inputs[0]->data_type);
-    }
-    cost_metrics.inputs_memory += cost_metrics.total_mem_diff_from(sim->offset);
-
-    void *output_grad_ptr =
-        sim->allocate(sub_output.get_volume(), outputs[0]->data_type);
-    cost_metrics.outputs_memory +=
-        cost_metrics.total_mem_diff_from(sim->offset);
-
-    void *kernel_grad_ptr =
-        sim->allocate((size_t)output_c * input_c, this->data_type);
-    void *bias_grad_ptr = sim->allocate(output_c, this->data_type);
-    cost_metrics.weights_memory +=
-        cost_metrics.total_mem_diff_from(sim->offset);
-
-    out_of_memory = (input_grad_ptr == NULL) || (output_grad_ptr == NULL) ||
-                    (kernel_grad_ptr == NULL) || (bias_grad_ptr == NULL);
-    if (out_of_memory) {
-      cost_metrics.forward_time = Simulator::MAXIMUM_TASK_RUN_TIME;
-      cost_metrics.backward_time = Simulator::MAXIMUM_TASK_RUN_TIME;
-      return true;
-    }
-    backward = [=] {
-      backward_kernel_wrapper(m,
-                              input_ptr,
-                              input_grad_ptr,
-                              output_ptr,
-                              output_grad_ptr,
-                              kernel_ptr,
-                              kernel_grad_ptr,
-                              bias_grad_ptr,
-                              input_c,
-                              output_c,
-                              input_n);
-    };
-  }
-
-  inner_measure_operator_cost(sim, forward, backward, cost_metrics);
-
-  if (sim->computationMode == COMP_MODE_TRAINING) {
-    log_measure.debug("[Measure Linear] name(%s) in(%d %d) out(%d %d) "
-                      "forward_time(%.4lf) backward_time(%.4lf)\n",
-                      name,
-                      input_n,
-                      input_c,
-                      output_n,
-                      output_c,
-                      cost_metrics.forward_time,
-                      cost_metrics.backward_time);
-  } else {
-    log_measure.debug(
-        "[Measure Linear] name(%s) in(%d %d) out(%d %d) forward_time(%.4lf)\n",
-        name,
-        input_n,
-        input_c,
-        output_n,
-        output_c,
-        cost_metrics.forward_time);
-  }
-  return true;
-}
-
-bool operator==(LinearParams const &lhs, LinearParams const &rhs) {
-  return lhs.layer_guid == rhs.layer_guid &&
-         lhs.out_channels == rhs.out_channels && lhs.use_bias == rhs.use_bias &&
-         lhs.data_type == rhs.data_type && lhs.activation == rhs.activation &&
-         lhs.kernel_reg_type == rhs.kernel_reg_type &&
-         lhs.kernel_reg_lambda == rhs.kernel_reg_lambda;
-}
-
-void Linear::serialize(Legion::Serializer &sez) const {
-  sez.serialize(this->layer_guid.id);
-  sez.serialize(this->layer_guid.transformer_layer_id);
-  sez.serialize(this->layer_guid.model_id);
-  sez.serialize(this->out_channels);
-  sez.serialize(this->activation);
-  sez.serialize(this->kernel_reg_type);
-  sez.serialize(this->kernel_reg_lambda);
-  sez.serialize(this->use_bias);
-  sez.serialize(this->data_type);
-  sez.serialize(this->quantization_type);
-  sez.serialize(this->offload);
-  sez.serialize(strlen(this->name));
-  sez.serialize(this->name, strlen(this->name));
-}
-
-/* static */
-using PCG::Node;
-Node Linear::deserialize(FFModel &ff,
-                         Legion::Deserializer &dez,
-                         ParallelTensor inputs[],
-                         int num_inputs) {
-  assert(num_inputs == 1);
-  int out_channels;
-  ActiMode activation;
-  RegularizerMode kernel_reg_type;
-  float kernel_reg_lambda;
-  bool use_bias;
-  DataType data_type;
-  DataType quantization_type;
-  bool offload;
-  size_t id, transformer_layer_id, deserialized_model_id;
-  dez.deserialize(id);
-  dez.deserialize(transformer_layer_id);
-  dez.deserialize(deserialized_model_id);
-  LayerID layer_guid(id, transformer_layer_id, deserialized_model_id);
-  dez.deserialize(out_channels);
-  dez.deserialize(activation);
-  dez.deserialize(kernel_reg_type);
-  dez.deserialize(kernel_reg_lambda);
-  dez.deserialize(use_bias);
-  dez.deserialize(data_type);
-  dez.deserialize(quantization_type);
-  dez.deserialize(offload);
-  size_t name_len;
-  char name[MAX_OPNAME] = {0};
-  dez.deserialize(name_len);
-  dez.deserialize(name, name_len);
-
-  LinearParams params;
-  params.activation = activation;
-  params.kernel_reg_type = kernel_reg_type;
-  params.kernel_reg_lambda = kernel_reg_lambda;
-  params.out_channels = out_channels;
-  params.use_bias = use_bias;
-  params.data_type = data_type;
-  params.layer_guid = layer_guid;
-  params.quantization_type = quantization_type;
-  params.offload = offload;
-  strcpy(params.name, name);
-  return ff.get_or_create_node<Linear>(inputs[0], params);
-}
-
-LinearParams Linear::get_params() const {
-  LinearParams params;
-  params.layer_guid = this->layer_guid;
-  params.out_channels = this->out_channels;
-  params.use_bias = this->use_bias;
-  params.data_type = this->data_type;
-  params.activation = this->activation;
-  params.kernel_reg_type = this->kernel_reg_type;
-  params.kernel_reg_lambda = this->kernel_reg_lambda;
-  params.quantization_type = this->quantization_type;
-  params.offload = this->offload;
-  if (strlen(this->name) < MAX_OPNAME) {
-    strcpy(params.name, this->name);
-  }
-
-  return params;
-}
-
-bool LinearParams::is_valid(ParallelTensorShape const &input_shape) const {
-  ParallelTensorShape output_shape, kernel_shape, bias_shape;
-  this->solve_dims(input_shape,
-                   output_shape.dims,
-                   &output_shape.num_dims,
-                   kernel_shape.dims,
-                   &kernel_shape.num_dims,
-                   bias_shape.dims,
-                   &bias_shape.num_dims);
-  bool is_valid = true;
-  is_valid &= input_shape.is_valid();
-  is_valid &= output_shape.is_valid();
-  is_valid &= kernel_shape.is_valid();
-  if (use_bias) {
-    is_valid &= bias_shape.is_valid();
-  }
-  return is_valid;
-}
-
-/** @brief  A wrapper around the main version of the solve_dims function.
- *
- * It takes a the input tensor as a parameter, instead of the input's
- * ParallelTensorShape.
- */
-void LinearParams::solve_dims(const ParallelTensor input,
-                              ParallelDim output_dims[MAX_TENSOR_DIM],
-                              int *output_ndims,
-                              ParallelDim kernel_dims[MAX_TENSOR_DIM],
-                              int *kernel_ndims,
-                              ParallelDim bias_dims[MAX_TENSOR_DIM],
-                              int *bias_ndims) const {
-  this->solve_dims(input->get_shape(),
-                   output_dims,
-                   output_ndims,
-                   kernel_dims,
-                   kernel_ndims,
-                   bias_dims,
-                   bias_ndims);
-}
-
-/** @brief  A wrapper around the main version of the solve_dims function.
- *
- * For each of the output, weights, and bias tensors, it takes a
- * ParallelTensorShape argument, instead of a pointer to an integer variable to
- * record the number of dimensions, plus a ParallelDim array to record all the
- * information regarding each dimension.
- */
-void LinearParams::solve_dims(ParallelTensorShape const &input_shape,
-                              ParallelTensorShape &output_shape,
-                              ParallelTensorShape &kernel_shape,
-                              ParallelTensorShape &bias_shape) const {
-  this->solve_dims(input_shape,
-                   output_shape.dims,
-                   &output_shape.num_dims,
-                   kernel_shape.dims,
-                   &kernel_shape.num_dims,
-                   bias_shape.dims,
-                   &bias_shape.num_dims);
-}
-
-void LinearParams::solve_dims(ParallelTensorShape const &input_shape,
-                              ParallelDim output_dims[MAX_TENSOR_DIM],
-                              int *output_ndims,
-                              ParallelDim kernel_dims[MAX_TENSOR_DIM],
-                              int *kernel_ndims,
-                              ParallelDim bias_dims[MAX_TENSOR_DIM],
-                              int *bias_ndims) const {
-  assert((output_dims == nullptr) == (output_ndims == nullptr));
-  assert((kernel_dims == nullptr) == (kernel_ndims == nullptr));
-  assert((bias_dims == nullptr) == (bias_ndims == nullptr));
-
-  std::vector<ParallelDimMappingRecord> mapping;
-  this->construct_mappings(mapping, input_shape);
-  // sets the is_replica_dim field to true for the dimensions that are used to
-  // record the number of replicas
-  this->mark_replica_dims(input_shape, output_dims, kernel_dims, bias_dims);
-
-  solve_parallel_dim_mappings(
-      mapping, {input_shape.dims}, {kernel_dims, bias_dims}, {output_dims});
-
-  // sets the dimension sizes of the output, weights, and bias tensors
-  this->calculate_nonreplica_dim_sizes(input_shape,
-                                       output_dims,
-                                       output_ndims,
-                                       kernel_dims,
-                                       kernel_ndims,
-                                       bias_dims,
-                                       bias_ndims);
-}
-
-/** @brief  Create a map between each of a tensor's dimension name and its
- * corresponding index
- *
- * The tensor dimension names are defined as follows. For the input tensor, the
- * first dimension is called INPUT_CHANNEL, and generally corresponds to number
- * of floats needed to store a single element from the input dataset. For
- * example, when each element in the dataset is a flattened MNIST image, the
- * INPUT_CHANNEL dimension will have a size of 28x28=784. The second to last and
- * last dimensions in the input tensor are, respectively, the INPUT_SAMPLE and
- * INPUT_REPLICA dimensions. The size of the INPUT_SAMPLE dimension generally
- * corresponds to the batch size used for training. The size of the
- * INPUT_REPLICA tells us how many replicas of the tensors have been created.
- * The dimensions of the output tensor are named analogously: the first
- * dimension is OUTPUT_CHANNEL, the second to last is OUTPUT_SAMPLE, and the
- * last one is OUTPUT_REPLICA. Both the input and output tensor may have
- * additional dimensions, without a name, between {INPUT,OUTPUT}_CHANNEL and
- * {INPUT,OUTPUT}_SAMPLE. For instance, when the input data comes in textual
- * form, it is common to have an additional dimension representing the sequence
- * length. When it comes to the weights, the dimensions are named simply as
- * KERNEL_CHANNEL_IN (first dimension of a weight's tensor), KERNEL_CHANNEL_OUT
- * (second dimension) and BIAS_CHANNEL_OUT (first dimension of the bias tensor)
- *
- * @param[in] input_shape   A ParallelTensorShape object representing the shape
- * of the ParallelTensor used for the input to the operator
- * @return dimension_names  A map from each LinearParams::NamedDimensions to the
- * index corresponding to that dimension in the input, weight, (bias), or output
- * tensor.
- */
-std::unordered_map<LinearParams::NamedDimensions, int>
-    LinearParams::get_dimension_names(
-        ParallelTensorShape const &input_shape) const {
-  int num_dims = input_shape.num_dims;
-
-  return {{INPUT_CHANNEL, 0},
-          {INPUT_SAMPLE, num_dims - 2},
-          {INPUT_REPLICA, num_dims - 1},
-          {OUTPUT_CHANNEL, 0},
-          {OUTPUT_SAMPLE, num_dims - 2},
-          {OUTPUT_REPLICA, num_dims - 1},
-          {KERNEL_CHANNEL_IN, 0},
-          {KERNEL_CHANNEL_OUT, 1},
-          {BIAS_CHANNEL_OUT, 0}};
-}
-
-/** @brief  Sets the size field of ParallelDim objects passed as arguments to
- * the expected (non-replica) dimensions of the output, weights, and bias
- * tensors. In addition, it sets the output_ndims, kernel_ndims and bias_ndims
- * variables to the number of dimensions (including the replica dimensions) of,
- * respectively, the ouput, weights, and bias tensors.
- *
- * The number of dimensions, and dimension sizes of the output, weights, and
- * bias dimensions are set as follows. The number of dimensions of all three
- * tensors are copied from the dimensions of the input tensor. The replica
- * dimensions are not subtracted or otherwise excluded. The size of the output
- * tensor dimensions are also copied from the input tensor, with the exception
- * of the last dimension (replica dimension), which is not set, and the first
- * dimension, whose size is set equal to the out_channels member of the
- * LinearParams struct, which in turn is set by the outDim parameter of the
- * FModel::dense function. When it comes to the size of the weights dimensions,
- * the first dimension is set to have size equal to the quotient of the size of
- * the INPUT_CHANNEL dimension of the input (first dimension) and the degree
- * (number of partitions) of the same input dimension. The second dimension of
- * the the weights tensor is set equal to out_channels, just like the first
- * dimension of the output tensor. Finally, the size of the first dimension of
- * the bias tensor is also set equal to the value of out_channels.
- *
- * @param[in]   input_shape   A required argument recording the dimensions of
- * the input tensor
- * @param[out]  output_dims   An array of ParallelDim objects representing the
- * dimensions of the output tensor
- * @param[out]  output_ndims  The number of dimensions (including the replica
- * dimension(s)) of the output tensor
- * @param[out]  kernel_dims   An array of ParallelDim objects representing the
- * dimensions of the weights tensor
- * @param[out]  kernel_ndims  The number of dimensions (including the replica
- * dimension(s)) of the weights tensor
- * @param[out]  bias_dims     An array of ParallelDim objects representing the
- * dimensions of the bias tensor
- * @param[out]  bias_ndims    The number of dimensions (including the replica
- * dimension(s)) of the bias tensor
- */
-void LinearParams::calculate_nonreplica_dim_sizes(
-    ParallelTensorShape const &input_shape,
-    ParallelDim output_dims[MAX_TENSOR_DIM],
-    int *output_ndims,
-    ParallelDim kernel_dims[MAX_TENSOR_DIM],
-    int *kernel_ndims,
-    ParallelDim bias_dims[MAX_TENSOR_DIM],
-    int *bias_ndims) const {
-  auto dimension_names = this->get_dimension_names(input_shape);
-  int num_dims = input_shape.num_dims;
-
-  if (output_dims != nullptr) {
-    for (int i = 1; i < input_shape.num_dims - 1; i++) {
-      output_dims[i].size = input_shape.dims[i].size;
-    }
-    output_dims[dimension_names.at(OUTPUT_CHANNEL)].size = this->out_channels;
-    *output_ndims = num_dims;
-  }
-  if (kernel_dims != nullptr) {
-    kernel_dims[dimension_names.at(KERNEL_CHANNEL_IN)].size =
-        input_shape.dims[INPUT_CHANNEL].size /
-        input_shape.dims[INPUT_CHANNEL].degree;
-    kernel_dims[dimension_names.at(KERNEL_CHANNEL_OUT)].size =
-        this->out_channels;
-    *kernel_ndims = num_dims;
-  }
-  if (bias_dims != nullptr) {
-    bias_dims[dimension_names.at(BIAS_CHANNEL_OUT)].size = this->out_channels;
-    *bias_ndims = num_dims;
-  }
-}
-
-/** @brief Switch the is_replica_dim field to true in each ParallelDim of
- *         the output, weight and bias tensor, if the corresponding dimension
- *         is used to keep track of the number of replicas
- *
- * @param[in]   input_shape   A required argument recording the dimensions of
- * the input tensor
- * @param[out]  output_dims   An array of ParallelDim objects representing the
- * dimensions of the output tensor
- * @param[out]  kernel_dims   An array of ParallelDim objects representing the
- * dimensions of the weights tensor
- * @param[out]  bias_dims     An array of ParallelDim objects representing the
- * dimensions of the bias tensor
- *
- */
-void LinearParams::mark_replica_dims(
-    ParallelTensorShape const &input_shape,
-    ParallelDim output_dims[MAX_TENSOR_DIM],
-    ParallelDim kernel_dims[MAX_TENSOR_DIM],
-    ParallelDim bias_dims[MAX_TENSOR_DIM]) const {
-  int num_dims = input_shape.num_dims;
-  auto dimension_names = this->get_dimension_names(input_shape);
-  if (output_dims != nullptr) {
-    output_dims[dimension_names.at(OUTPUT_REPLICA)].is_replica_dim = true;
-  }
-  if (kernel_dims != nullptr) {
-    for (int i = 2; i < num_dims; i++) {
-      kernel_dims[i].is_replica_dim = true;
-    }
-  }
-  if (bias_dims != nullptr) {
-    for (int i = 1; i < num_dims; i++) {
-      bias_dims[i].is_replica_dim = true;
-    }
-  }
-}
-
-void LinearParams::construct_mappings(
-    std::vector<ParallelDimMappingRecord> &mappings,
-    ParallelTensorShape const &input_shape) const {
-  std::unordered_map<NamedDimensions, int> dimension_names =
-      this->get_dimension_names(input_shape);
-
-  Op::construct_output_parallel_dims(
-      mappings,
-      {{dimension_names.at(INPUT_CHANNEL), dimension_names.at(OUTPUT_REPLICA)},
-       {dimension_names.at(INPUT_REPLICA),
-        dimension_names.at(OUTPUT_CHANNEL)}});
-  for (int i = 1; i < input_shape.num_dims - 1; i++) {
-    Op::construct_output_parallel_dims(mappings, i, i);
-  }
-
-  Op::construct_weight_parallel_dims(mappings,
-                                     {{dimension_names.at(INPUT_CHANNEL),
-                                       dimension_names.at(KERNEL_CHANNEL_IN)},
-                                      {dimension_names.at(INPUT_REPLICA),
-                                       dimension_names.at(KERNEL_CHANNEL_OUT)}},
-                                     0 /*input_idx*/,
-                                     KERNEL_IDX);
-  // map a bunch of replica dimensions for the unnamed dimensions in the input
-  for (int i = 1; i < input_shape.num_dims - 1; i++) {
-    Op::construct_weight_parallel_dims(
-        mappings, i, i + 1, 0 /*input_idx*/, KERNEL_IDX);
-  }
-
-  Op::construct_weight_parallel_dims(mappings,
-                                     {
-                                         {dimension_names.at(INPUT_REPLICA),
-                                          dimension_names.at(BIAS_CHANNEL_OUT)},
-                                     },
-                                     0 /*input_idx*/,
-                                     BIAS_IDX);
-  for (int i = 0; i < input_shape.num_dims - 1; i++) {
-    Op::construct_weight_parallel_dims(
-        mappings, i, i + 1, 0 /*input_idx*/, BIAS_IDX);
-  }
+bool Experts::measure_operator_cost(Simulator *sim,
+                                    MachineView const &c,
+                                    CostMetrics &cost_metrics) const {
+  // This is an inference only operator
+  assert(false && "Experts is designed for inference only");
+  return false;
 }
 
 }; // namespace FlexFlow
 
 namespace std {
-size_t hash<FlexFlow::LinearParams>::operator()(
-    FlexFlow::LinearParams const &params) const {
+size_t hash<FlexFlow::ExpertsParams>::operator()(
+    FlexFlow::ExpertsParams const &params) const {
   size_t key = 0;
   hash_combine(key, params.layer_guid.id);
-  hash_combine(key, params.out_channels);
+  hash_combine(key, params.num_experts);
+  hash_combine(key, params.experts_start_idx);
+  hash_combine(key, params.experts_output_dim_size);
+  hash_combine(key, params.alpha);
+  hash_combine(key, params.experts_num_layers);
+  hash_combine(key, params.experts_internal_dim_size);
   hash_combine(key, params.use_bias);
-  hash_combine(key, params.data_type);
   hash_combine(key, params.activation);
-  hash_combine(key, params.kernel_reg_type);
-  hash_combine(key, params.kernel_reg_lambda);
-  hash_combine(key, params.quantization_type);
-  hash_combine(key, params.offload);
   return key;
 }
 }; // namespace std
