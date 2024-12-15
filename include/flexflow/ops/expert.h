@@ -89,6 +89,14 @@ public:
   bool measure_operator_cost(Simulator *sim,
                              MachineView const &pc,
                              CostMetrics &cost_metrics) const override;
+  bool estimate_sync_cost(Simulator *sim,
+                        MachineView const &pc,
+                        CostMetrics &cost_metrics) const override;
+  ParallelConfig get_random_parallel_config(FFModel const &ff) const override;
+  bool is_valid_parallel_config(FFModel const &ff,
+                                ParallelConfig const &pc) const override;
+
+
   template <typename T>
   static void inference_kernel(ExpertMeta const *m,
                                int num_elements,
@@ -130,10 +138,33 @@ public:
 class ExpertMeta : public OpMeta {
 public:
   ExpertMeta(FFHandler handle,
-                       Expert const *ln,
-                       MemoryAllocator &gpu_mem_allocator);
+             int batch_size,
+             Linear const *li,
+             MemoryAllocator gpu_mem_allocator,
+             int weightSize);
   ~ExpertMeta(void);
-
+#if defined(FF_USE_CUDA) || defined(FF_USE_HIP_CUDA)
+  cudnnTensorDescriptor_t outputTensor;
+  cudnnActivationDescriptor_t actiDesc;
+#else
+  miopenTensorDescriptor_t outputTensor;
+  miopenActivationDescriptor_t actiDesc;
+#endif
+    void *one_ptr;
+  void *weight_ptr;
+  DataType weight_ptr_type;
+  DataType quantization_type;
+  bool offload;
+  char *quantized_weight_ptr;
+  size_t quantized_weightSize;
+  ActiMode activation;
+  RegularizerMode kernel_reg_type;
+  float kernel_reg_lambda;
+  bool use_bias, add_bias_only_once;
+  Realm::RegionInstance reserveInst;
+  // PEFT related fields
+  void *output_activation_buffer;
+  size_t allocated_peft_buffer_size = 0;
 public:
   Realm::RegionInstance reserveInst;
   // PEFT related fields
