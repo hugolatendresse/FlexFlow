@@ -161,7 +161,7 @@ Op *Expert::create_operator_from_layer(
   DataType quantization_type = (DataType)value;
   layer->get_int_property("offload", value);
   bool offload = (bool)value;
-  return new Linear(model,
+  return new Expert(model,
                     layer->layer_guid,
                     inputs[0],
                     outdim,
@@ -180,11 +180,11 @@ Op *Expert::create_operator_from_layer(
 //   return this->get_params().get_hash(this->inputs[0]);
 // }
 
-Linear::Linear(FFModel &model,
+Expert::Expert(FFModel &model,
                Linear const &other,
                const ParallelTensor input,
                bool allocate_weights)
-    : Linear(model,
+    : Expert(model,
              other.layer_guid,
              input,
              other.out_channels,
@@ -198,12 +198,12 @@ Linear::Linear(FFModel &model,
              allocate_weights,
              other.name) {}
 
-Linear::Linear(FFModel &model,
+Expert::Expert(FFModel &model,
                LinearParams const &params,
                ParallelTensor const input,
                char const *name,
                bool allocate_weights)
-    : Linear(model,
+    : Expert(model,
              params.layer_guid,
              input,
              params.out_channels,
@@ -217,10 +217,10 @@ Linear::Linear(FFModel &model,
              allocate_weights,
              params.name) {}
 
-Linear::Linear(FFModel &model,
+Expert::Expert(FFModel &model,
                LayerID const &_layer_guid,
                const ParallelTensor _input,
-               int out_dim,
+               int out_dim_hidden, // TODO see if need intermediate too
                ActiMode _activation,
                RegularizerMode _kernel_reg_type,
                float _kernel_reg_lambda,
@@ -237,9 +237,9 @@ Linear::Linear(FFModel &model,
          1 /*inputs*/,
          _use_bias ? 2 : 1 /*weights*/,
          allocate_weights,
-         1 /*outputs*/,
+         2 /*outputs*/, // TODO add if we have more weights
          _input),
-      out_channels(out_dim), activation(_activation), use_bias(_use_bias),
+      out_channels(out_dim_hidden), activation(_activation), use_bias(_use_bias),
       kernel_reg_type(_kernel_reg_type), kernel_reg_lambda(_kernel_reg_lambda),
       quantization_type(_quantization_type), offload(_offload),
       replica(ParallelTensorBase::NO_TENSOR) {
@@ -253,7 +253,7 @@ Linear::Linear(FFModel &model,
 
   ParallelTensorShape input_shape = this->inputs[0]->get_shape();
   ParallelTensorShape output_shape, kernel_shape, bias_shape;
-  LinearParams params = this->get_params();
+  ExpertParams params = this->get_params();
   params.construct_mappings(*this->parallel_dims_mapping, input_shape);
   params.solve_dims(input_shape, output_shape, kernel_shape, bias_shape);
   kernel_shape.dims[0].size = this->in_channels;
@@ -658,7 +658,7 @@ void Linear::inference_task(Task const *task,
                                             runtime);
     assert(bias.domain.get_volume() == static_cast<size_t>(out_dim));
   }
-  inference_kernel_wrapper(m,
+  FlexFlow::Kernels::Linear::inference_kernel_wrapper(m,
                            bc,
                            input.ptr,
                            output.ptr,
@@ -693,146 +693,7 @@ FutureMap Linear::peft_bwd(FFModel const &ff,
                            std::vector<ParallelTensor> const &batch_inputs,
                            std::vector<ParallelTensor> const &batch_outputs,
                            MachineView const *mv) {
-  ArgumentMap argmap;
-  Context ctx = ff.config.lg_ctx;
-  Runtime *runtime = ff.config.lg_hlr;
-  parallel_is = batch_outputs[0]->parallel_is;
-  MachineView const *view = mv ? mv : &batch_outputs[0]->machine_view;
-  set_argumentmap_for_inference(ff, argmap, batch_outputs[0]);
-  size_t machine_view_hash = view->hash();
-  /* std::cout << "Linear op machine_view: " << *(MachineView const *)mv
-            << std::endl; */
-  IndexLauncher launcher(LINEAR_PEFT_BWD_TASK_ID,
-                         parallel_is,
-                         TaskArgument(nullptr, 0),
-                         argmap,
-                         Predicate::TRUE_PRED,
-                         false /*must*/,
-                         0 /*mapper_id*/,
-                         machine_view_hash);
-  launcher.add_future(bc);
-  launcher.add_region_requirement(
-      RegionRequirement(batch_inputs[0]->part_grad,
-                        0 /*projection id*/,
-                        reset_input_grads[0] ? WRITE_ONLY : READ_WRITE,
-                        EXCLUSIVE,
-                        batch_inputs[0]->region_grad));
-  launcher.add_field(0, FID_DATA);
-  launcher.add_region_requirement(
-      RegionRequirement(batch_outputs[0]->part_grad,
-                        0 /*projection id*/,
-                        READ_WRITE,
-                        EXCLUSIVE,
-                        batch_outputs[0]->region_grad));
-  launcher.add_field(1, FID_DATA);
-  launcher.add_region_requirement(
-      RegionRequirement(weights[0]->part,
-                        0 /*projection id*/,
-                        READ_ONLY,
-                        EXCLUSIVE,
-                        weights[0]->region,
-                        ff.cpu_offload ? MAP_TO_ZC_MEMORY : 0));
-  launcher.add_field(2, FID_DATA);
-  return runtime->execute_index_space(ctx, launcher);
-}
-
-void Linear::peft_bwd_task(Task const *task,
-                           std::vector<PhysicalRegion> const &regions,
-                           Context ctx,
-                           Runtime *runtime) {
-  Domain input_domain = runtime->get_index_space_domain(
-      ctx, task->regions[0].region.get_index_space());
-  LinearMeta *m = *((LinearMeta **)task->local_args);
-  BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
-  if (bc->num_active_peft_tokens() == 0) {
-    return;
-  }
-  assert(regions.size() == 3);
-  assert(task->regions.size() == 3);
-  if (m->quantization_type == DT_NONE) {
-    assert(m->input_type[0] == m->weight_type[0]);
-  }
-  assert(m->input_type[0] == m->output_type[0]);
-
-  GenericTensorAccessorW input_grad = helperGetGenericTensorAccessorRW(
-      m->input_type[0], regions[0], task->regions[0], FID_DATA, ctx, runtime);
-  GenericTensorAccessorW output_grad = helperGetGenericTensorAccessorRW(
-      m->output_type[0], regions[1], task->regions[1], FID_DATA, ctx, runtime);
-  GenericTensorAccessorR weight = helperGetGenericTensorAccessorRO(
-      m->weight_type[0], regions[2], task->regions[2], FID_DATA, ctx, runtime);
-  int in_dim = input_grad.domain.hi()[0] - input_grad.domain.lo()[0] + 1;
-  int out_dim = output_grad.domain.hi()[0] - output_grad.domain.lo()[0] + 1;
-
-  int num_infr_tokens = bc->num_active_infr_tokens();
-  int num_peft_tokens = bc->num_active_peft_tokens();
-  if (m->inference_debugging) {
-    assert(task->index_point.get_dim() == 1);
-    int shard_id = task->index_point.point_data[0];
-    Linear::save_inference_tensors_to_file(
-        m, shard_id, bc, {input_grad}, {weight}, {output_grad}, false, true);
-    printf("\tw=[%i,%i] @ out_grad=[%i,%i] -> in_grad[%i,%i]\n",
-           in_dim,
-           out_dim,
-           out_dim,
-           num_peft_tokens,
-           in_dim,
-           num_peft_tokens);
-  }
-  peft_bwd_kernel_wrapper(m,
-                          bc,
-                          input_grad.ptr,
-                          output_grad.ptr,
-                          weight.ptr,
-                          in_dim,
-                          out_dim,
-                          num_infr_tokens,
-                          num_peft_tokens);
-  if (m->inference_debugging) {
-    assert(task->index_point.get_dim() == 1);
-    int shard_id = task->index_point.point_data[0];
-    Linear::save_inference_tensors_to_file(
-        m, shard_id, bc, {input_grad}, {weight}, {output_grad}, false);
-  }
-}
-
-void Linear::forward_task(Task const *task,
-                          std::vector<PhysicalRegion> const &regions,
-                          Context ctx,
-                          Runtime *runtime) {
-  Domain input_domain = runtime->get_index_space_domain(
-      ctx, task->regions[0].region.get_index_space());
-  LinearMeta const *m = *((LinearMeta **)task->local_args);
-  if (m->quantization_type == DT_NONE) {
-    assert(m->input_type[0] == m->weight_type[0]);
-  }
-  assert(m->input_type[0] == m->output_type[0]);
-  switch (input_domain.get_dim()) {
-#define DIMFUNC(DIM)                                                           \
-  case DIM:                                                                    \
-    if (m->output_type[0] == DT_HALF) {                                        \
-      if (m->quantization_type != DT_NONE) {                                   \
-        return forward_task_with_dim<half, char, DIM>(                         \
-            task, regions, ctx, runtime);                                      \
-      } else {                                                                 \
-        return forward_task_with_dim<half, half, DIM>(                         \
-            task, regions, ctx, runtime);                                      \
-      }                                                                        \
-    } else if (m->output_type[0] == DT_FLOAT) {                                \
-      if (m->quantization_type != DT_NONE) {                                   \
-        return forward_task_with_dim<float, char, DIM>(                        \
-            task, regions, ctx, runtime);                                      \
-      } else {                                                                 \
-        return forward_task_with_dim<float, float, DIM>(                       \
-            task, regions, ctx, runtime);                                      \
-      }                                                                        \
-    } else {                                                                   \
-      assert(false && "Unsupported data type");                                \
-    }
-    LEGION_FOREACH_N(DIMFUNC)
-#undef DIMFUNC
-    default:
-      assert(false);
-  }
+  assert(false && "Not implemented");
 }
 
 /*
@@ -1055,136 +916,14 @@ bool Linear::is_valid_parallel_config(FFModel const &ff,
   return true;
 }
 
-bool Linear::measure_operator_cost(Simulator *sim,
+bool Expert::measure_operator_cost(Simulator *sim,
                                    MachineView const &mv,
                                    CostMetrics &cost_metrics) const {
-  ParallelTensorBase sub_output, sub_input;
-  if (!outputs[0]->get_sub_tensor(mv, sub_output)) {
-    return false;
-  }
-  if (!inputs[0]->get_sub_tensor(mv, sub_input)) {
-    return false;
-  }
-  int input_c = sub_input.dims[0].size;
-  int input_n = sub_input.get_volume() / input_c;
-  int output_c = sub_output.dims[0].size;
-  int output_n = sub_output.get_volume() / output_c;
-
-  MemoryAllocator gpu_mem_allocator(sim->memory);
-  LinearMeta *m = new LinearMeta(
-      sim->handler, output_n, this, gpu_mem_allocator, input_c * output_c);
-  m->activation = activation;
-  m->kernel_reg_type = kernel_reg_type;
-  m->kernel_reg_lambda = kernel_reg_lambda;
-  m->input_type[0] = inputs[0]->data_type;
-  m->weight_type[0] = this->data_type;
-  m->output_type[0] = outputs[0]->data_type;
-  assert(m->profiling == false);
-
-  init_kernel(m, output_n, output_c);
-
-  // allocate tensors in simulator
-  sim->free_all();
-  void *input_ptr = sim->allocate(sub_input.get_volume(), inputs[0]->data_type);
-  cost_metrics.inputs_memory += cost_metrics.total_mem_diff_from(sim->offset);
-
-  void *output_ptr =
-      sim->allocate(sub_output.get_volume(), outputs[0]->data_type);
-  cost_metrics.outputs_memory += cost_metrics.total_mem_diff_from(sim->offset);
-
-  void *kernel_ptr = sim->allocate((size_t)output_c * input_c, this->data_type);
-  void *bias_ptr = sim->allocate(output_c, this->data_type);
-  assert(bias_ptr != NULL);
-  cost_metrics.weights_memory += cost_metrics.total_mem_diff_from(sim->offset);
-
-  bool out_of_memory = (input_ptr == NULL) || (output_ptr == NULL) ||
-                       (kernel_ptr == NULL) || (bias_ptr == NULL);
-  if (out_of_memory) {
-    cost_metrics.forward_time = Simulator::MAXIMUM_TASK_RUN_TIME;
-    cost_metrics.backward_time = Simulator::MAXIMUM_TASK_RUN_TIME;
-    return true;
-  }
-  std::function<void()> forward, backward;
-  forward = [&] {
-    forward_kernel_wrapper(m,
-                           input_ptr,
-                           output_ptr,
-                           kernel_ptr,
-                           bias_ptr,
-                           input_c,
-                           output_c,
-                           input_n);
-  };
-  if (sim->computationMode == COMP_MODE_TRAINING) {
-    void *input_grad_ptr = NULL;
-    if (trainable_inputs[0]) {
-      input_grad_ptr =
-          sim->allocate(sub_input.get_volume(), inputs[0]->data_type);
-    } else {
-      input_grad_ptr =
-          sim->allocate(sub_input.get_volume(), inputs[0]->data_type);
-    }
-    cost_metrics.inputs_memory += cost_metrics.total_mem_diff_from(sim->offset);
-
-    void *output_grad_ptr =
-        sim->allocate(sub_output.get_volume(), outputs[0]->data_type);
-    cost_metrics.outputs_memory +=
-        cost_metrics.total_mem_diff_from(sim->offset);
-
-    void *kernel_grad_ptr =
-        sim->allocate((size_t)output_c * input_c, this->data_type);
-    void *bias_grad_ptr = sim->allocate(output_c, this->data_type);
-    cost_metrics.weights_memory +=
-        cost_metrics.total_mem_diff_from(sim->offset);
-
-    out_of_memory = (input_grad_ptr == NULL) || (output_grad_ptr == NULL) ||
-                    (kernel_grad_ptr == NULL) || (bias_grad_ptr == NULL);
-    if (out_of_memory) {
-      cost_metrics.forward_time = Simulator::MAXIMUM_TASK_RUN_TIME;
-      cost_metrics.backward_time = Simulator::MAXIMUM_TASK_RUN_TIME;
-      return true;
-    }
-    backward = [=] {
-      backward_kernel_wrapper(m,
-                              input_ptr,
-                              input_grad_ptr,
-                              output_ptr,
-                              output_grad_ptr,
-                              kernel_ptr,
-                              kernel_grad_ptr,
-                              bias_grad_ptr,
-                              input_c,
-                              output_c,
-                              input_n);
-    };
-  }
-
-  inner_measure_operator_cost(sim, forward, backward, cost_metrics);
-
-  if (sim->computationMode == COMP_MODE_TRAINING) {
-    log_measure.debug("[Measure Linear] name(%s) in(%d %d) out(%d %d) "
-                      "forward_time(%.4lf) backward_time(%.4lf)\n",
-                      name,
-                      input_n,
-                      input_c,
-                      output_n,
-                      output_c,
-                      cost_metrics.forward_time,
-                      cost_metrics.backward_time);
-  } else {
-    log_measure.debug(
-        "[Measure Linear] name(%s) in(%d %d) out(%d %d) forward_time(%.4lf)\n",
-        name,
-        input_n,
-        input_c,
-        output_n,
-        output_c,
-        cost_metrics.forward_time);
-  }
-  return true;
+  assert(false && "Not implemented");
+  return false;
 }
 
-bool operator==(LinearParams const &lhs, LinearParams const &rhs) {
+bool operator==(ExpertParams const &lhs, ExpertParams const &rhs) {
   return lhs.layer_guid == rhs.layer_guid &&
          lhs.out_channels == rhs.out_channels && lhs.use_bias == rhs.use_bias &&
          lhs.data_type == rhs.data_type && lhs.activation == rhs.activation &&
