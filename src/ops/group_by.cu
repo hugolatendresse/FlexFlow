@@ -37,7 +37,7 @@ __global__ void
 
   // Get pred pointers, single thread per block
   if (threadIdx.x == 0) {
-    int exp_tensor_rows = ceil(alpha * k / n * batch_size);
+    int exp_tensor_rows = alpha == 0.0f ? ceil(alpha * k / n * batch_size) : 128;
     int expert_idx[MAX_N] = {0};
     for (int i = 0; i < k * batch_size; i++) {
       // Get pointer to chosen expert predictions

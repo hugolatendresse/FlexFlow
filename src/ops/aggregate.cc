@@ -353,13 +353,13 @@ OpMeta *Aggregate::init_task(Task const *task,
 
   // Only needed to allocate memroy in the kernel
   AggregateMeta *m = new AggregateMeta(handle, agg, gpu_mem_allocator);
-  for (int i = 0; i < regions.size() - 1; i++) {
+  int num_inputs = agg->n + FIXED_ARG_CNT;
+  for (int i = 0; i < num_inputs; i++) {
     m->input_type[i] = agg->inputs[i]->data_type;
   }
   m->output_type[0] = agg->outputs[0]->data_type;
   std::strcpy(m->op_name, agg->name);
 
-  // TODO three instructions below are not in SigmoidSiluMulti::init_task
   m->profiling = agg->profiling;
   m->inference_debugging = agg->inference_debugging;
   std::strcpy(m->op_name, agg->name);
