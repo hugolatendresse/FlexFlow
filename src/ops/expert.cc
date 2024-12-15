@@ -747,11 +747,11 @@ void Linear::forward_task_with_dim(Task const *task,
                          batch_size);
 }
 
-void Linear::backward(FFModel const &ff) {
+void Expert::backward(FFModel const &ff) {
   assert(false && "Not implemented");
 }
 
-void Linear::backward_task(Task const *task,
+void Expert::backward_task(Task const *task,
                            std::vector<PhysicalRegion> const &regions,
                            Context ctx,
                            Runtime *runtime) {
@@ -768,14 +768,14 @@ void Linear::backward_task(Task const *task,
   regions[6](I/O): bias_grad
 */
 template <typename DT, int NDIM>
-void Linear::backward_task_with_dim(Task const *task,
+void Expert::backward_task_with_dim(Task const *task,
                                     std::vector<PhysicalRegion> const &regions,
                                     Context ctx,
                                     Runtime *runtime) {
   assert(false && "Not implemented");
 }
 
-void Linear::print_layer(FFModel const &ff) {
+void Expert::print_layer(FFModel const &ff) {
   printf("linear layer\n");
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -827,7 +827,7 @@ void Linear::print_layer(FFModel const &ff) {
   runtime->unmap_region(ctx, bias_region);
 }
 
-bool Linear::estimate_sync_cost(Simulator *sim,
+bool Expert::estimate_sync_cost(Simulator *sim,
                                 MachineView const &view,
                                 CostMetrics &cost_metrics) const {
   // Estimate the cost of sync weights
@@ -850,7 +850,7 @@ bool Linear::estimate_sync_cost(Simulator *sim,
   return true;
 }
 
-ParallelConfig Linear::get_random_parallel_config(FFModel const &ff) const {
+ParallelConfig Expert::get_random_parallel_config(FFModel const &ff) const {
   if (!ff.config.enable_parameter_parallel) {
     return Op::get_random_parallel_config(ff);
   }
@@ -889,7 +889,7 @@ ParallelConfig Linear::get_random_parallel_config(FFModel const &ff) const {
   return pc;
 }
 
-bool Linear::get_int_parameter(PMParameter para, int *value) const {
+bool Expert::get_int_parameter(PMParameter para, int *value) const {
   switch (para) {
     case PM_ACTI:
       *value = (int)activation;
@@ -899,7 +899,7 @@ bool Linear::get_int_parameter(PMParameter para, int *value) const {
   }
 }
 
-bool Linear::is_valid_parallel_config(FFModel const &ff,
+bool Expert::is_valid_parallel_config(FFModel const &ff,
                                       ParallelConfig const &pc) const {
   if (!ff.config.enable_parameter_parallel) {
     return Op::is_valid_parallel_config(ff, pc);
@@ -931,7 +931,7 @@ bool operator==(ExpertParams const &lhs, ExpertParams const &rhs) {
          lhs.kernel_reg_lambda == rhs.kernel_reg_lambda;
 }
 
-void Linear::serialize(Legion::Serializer &sez) const {
+void Expert::serialize(Legion::Serializer &sez) const {
   sez.serialize(this->layer_guid.id);
   sez.serialize(this->layer_guid.transformer_layer_id);
   sez.serialize(this->layer_guid.model_id);
@@ -949,7 +949,7 @@ void Linear::serialize(Legion::Serializer &sez) const {
 
 /* static */
 using PCG::Node;
-Node Linear::deserialize(FFModel &ff,
+Node Expert::deserialize(FFModel &ff,
                          Legion::Deserializer &dez,
                          ParallelTensor inputs[],
                          int num_inputs) {
@@ -980,7 +980,7 @@ Node Linear::deserialize(FFModel &ff,
   dez.deserialize(name_len);
   dez.deserialize(name, name_len);
 
-  LinearParams params;
+  ExpertParams params;
   params.activation = activation;
   params.kernel_reg_type = kernel_reg_type;
   params.kernel_reg_lambda = kernel_reg_lambda;
@@ -994,8 +994,8 @@ Node Linear::deserialize(FFModel &ff,
   return ff.get_or_create_node<Linear>(inputs[0], params);
 }
 
-LinearParams Linear::get_params() const {
-  LinearParams params;
+ExpertParams Expert::get_params() const {
+  ExpertParams params;
   params.layer_guid = this->layer_guid;
   params.out_channels = this->out_channels;
   params.use_bias = this->use_bias;
@@ -1012,7 +1012,7 @@ LinearParams Linear::get_params() const {
   return params;
 }
 
-bool LinearParams::is_valid(ParallelTensorShape const &input_shape) const {
+bool ExpertParams::is_valid(ParallelTensorShape const &input_shape) const {
   ParallelTensorShape output_shape, kernel_shape, bias_shape;
   this->solve_dims(input_shape,
                    output_shape.dims,
@@ -1036,7 +1036,7 @@ bool LinearParams::is_valid(ParallelTensorShape const &input_shape) const {
  * It takes a the input tensor as a parameter, instead of the input's
  * ParallelTensorShape.
  */
-void LinearParams::solve_dims(const ParallelTensor input,
+void ExpertParams::solve_dims(const ParallelTensor input,
                               ParallelDim output_dims[MAX_TENSOR_DIM],
                               int *output_ndims,
                               ParallelDim kernel_dims[MAX_TENSOR_DIM],
@@ -1059,7 +1059,7 @@ void LinearParams::solve_dims(const ParallelTensor input,
  * record the number of dimensions, plus a ParallelDim array to record all the
  * information regarding each dimension.
  */
-void LinearParams::solve_dims(ParallelTensorShape const &input_shape,
+void ExpertParams::solve_dims(ParallelTensorShape const &input_shape,
                               ParallelTensorShape &output_shape,
                               ParallelTensorShape &kernel_shape,
                               ParallelTensorShape &bias_shape) const {
@@ -1072,7 +1072,7 @@ void LinearParams::solve_dims(ParallelTensorShape const &input_shape,
                    &bias_shape.num_dims);
 }
 
-void LinearParams::solve_dims(ParallelTensorShape const &input_shape,
+void ExpertParams::solve_dims(ParallelTensorShape const &input_shape,
                               ParallelDim output_dims[MAX_TENSOR_DIM],
                               int *output_ndims,
                               ParallelDim kernel_dims[MAX_TENSOR_DIM],
@@ -1130,8 +1130,8 @@ void LinearParams::solve_dims(ParallelTensorShape const &input_shape,
  * index corresponding to that dimension in the input, weight, (bias), or output
  * tensor.
  */
-std::unordered_map<LinearParams::NamedDimensions, int>
-    LinearParams::get_dimension_names(
+std::unordered_map<ExpertParams::NamedDimensions, int>
+    ExpertParams::get_dimension_names(
         ParallelTensorShape const &input_shape) const {
   int num_dims = input_shape.num_dims;
 
@@ -1183,7 +1183,7 @@ std::unordered_map<LinearParams::NamedDimensions, int>
  * @param[out]  bias_ndims    The number of dimensions (including the replica
  * dimension(s)) of the bias tensor
  */
-void LinearParams::calculate_nonreplica_dim_sizes(
+void ExpertParams::calculate_nonreplica_dim_sizes(
     ParallelTensorShape const &input_shape,
     ParallelDim output_dims[MAX_TENSOR_DIM],
     int *output_ndims,
@@ -1229,7 +1229,7 @@ void LinearParams::calculate_nonreplica_dim_sizes(
  * dimensions of the bias tensor
  *
  */
-void LinearParams::mark_replica_dims(
+void ExpertParams::mark_replica_dims(
     ParallelTensorShape const &input_shape,
     ParallelDim output_dims[MAX_TENSOR_DIM],
     ParallelDim kernel_dims[MAX_TENSOR_DIM],
@@ -1251,7 +1251,7 @@ void LinearParams::mark_replica_dims(
   }
 }
 
-void LinearParams::construct_mappings(
+void ExpertParams::construct_mappings(
     std::vector<ParallelDimMappingRecord> &mappings,
     ParallelTensorShape const &input_shape) const {
   std::unordered_map<NamedDimensions, int> dimension_names =
@@ -1272,11 +1272,11 @@ void LinearParams::construct_mappings(
                                       {dimension_names.at(INPUT_REPLICA),
                                        dimension_names.at(KERNEL_CHANNEL_OUT)}},
                                      0 /*input_idx*/,
-                                     KERNEL_IDX);
+                                     W1_IDX); // TODO add W2_IDX somehow!!
   // map a bunch of replica dimensions for the unnamed dimensions in the input
   for (int i = 1; i < input_shape.num_dims - 1; i++) {
     Op::construct_weight_parallel_dims(
-        mappings, i, i + 1, 0 /*input_idx*/, KERNEL_IDX);
+        mappings, i, i + 1, 0 /*input_idx*/, W1_IDX); // TODO add W2_IDX somehow!!
   }
 
   Op::construct_weight_parallel_dims(mappings,
@@ -1295,8 +1295,8 @@ void LinearParams::construct_mappings(
 }; // namespace FlexFlow
 
 namespace std {
-size_t hash<FlexFlow::LinearParams>::operator()(
-    FlexFlow::LinearParams const &params) const {
+size_t hash<FlexFlow::ExpertParams>::operator()(
+    FlexFlow::ExpertParams const &params) const {
   size_t key = 0;
   hash_combine(key, params.layer_guid.id);
   hash_combine(key, params.out_channels);
