@@ -59,7 +59,6 @@ Tensor FFModel::aggregate(
                         1 /*outputs*/,
                         inputs);
   {
-    // assert(n == 6 && "Dirty magic numbers in this script assume n==6");
     int num_dim = inputs[FIXED_ARG_CNT]->num_dims;
     // Set output shape
     int dims[MAX_TENSOR_DIM];
@@ -352,20 +351,15 @@ OpMeta *Aggregate::init_task(Task const *task,
   Memory gpu_mem = get_proc_mem(Machine::get_machine(), task->target_proc);
   MemoryAllocator gpu_mem_allocator(gpu_mem);
 
-  // TODO inc_multihead_self_attention has a lot more steps here.
-  //  ... including some steps with GenericTensorAccessorR
-  //  Shoud I include?
-
   // Only needed to allocate memroy in the kernel
   AggregateMeta *m = new AggregateMeta(handle, agg, gpu_mem_allocator);
   int num_inputs = agg->n + FIXED_ARG_CNT;
-  for (int i = 0; i < num_inputs; i++) { // TODO 10 is a magic number
+  for (int i = 0; i < num_inputs; i++) {
     m->input_type[i] = agg->inputs[i]->data_type;
   }
   m->output_type[0] = agg->outputs[0]->data_type;
   std::strcpy(m->op_name, agg->name);
 
-  // TODO three instructions below are not in SigmoidSiluMulti::init_task
   m->profiling = agg->profiling;
   m->inference_debugging = agg->inference_debugging;
   std::strcpy(m->op_name, agg->name);
@@ -532,8 +526,7 @@ void Aggregate::forward_task(Task const *task,
 //
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 //
-  // int n = 6; // TODO remove magic number
-  int n = regions.size() - FIXED_ARG_CNT - 1;
+  int n = regions.size() - FIXED_ARG_CNT - 1; // Last region is for the output
 //
 //  // get gate_pred, gate_assign, output
   AccessorRW<float, 4> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch

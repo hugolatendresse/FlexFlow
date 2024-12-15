@@ -76,7 +76,7 @@ void FFModel::group_by(const Tensor input,
       dims[num_dims - 1] = (int)ceil(alpha * k_experts_per_tok / num_local_experts * input->dims[num_dims - 1]);
     
     } else { // MK: added this for dummy groupby
-      dims[num_dims - 1] = 128;
+      dims[num_dims - 1] = 128; // TODO remove magic number
     }
     // printf("ff.groupby output: %d %d %d %d\n", dims[0], dims[1], dims[2], dims[3]);
 
@@ -173,7 +173,7 @@ Group_by::Group_by(FFModel &model,
       dims[num_dims - 2].size = (int)ceil(alpha * k_experts_per_tok / n * inputs[0]->dims[2].size); // was inputs[0]->dims[1].size
     
   } else { // MK: added this for dummy groupby
-    dims[num_dims - 2].size = 128;
+    dims[num_dims - 2].size = 128;  // TODO remove magic number
     //dims[num_dims - 2] = 128;
   }
   // printf("groupby op output: %d %d %d %d\n", dims[0].size, dims[1].size, dims[2].size, dims[3].size);
