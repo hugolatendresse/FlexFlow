@@ -351,13 +351,9 @@ OpMeta *Aggregate::init_task(Task const *task,
   Memory gpu_mem = get_proc_mem(Machine::get_machine(), task->target_proc);
   MemoryAllocator gpu_mem_allocator(gpu_mem);
 
-  // TODO inc_multihead_self_attention has a lot more steps here.
-  //  ... including some steps with GenericTensorAccessorR
-  //  Shoud I include?
-
   // Only needed to allocate memroy in the kernel
   AggregateMeta *m = new AggregateMeta(handle, agg, gpu_mem_allocator);
-  for (int i = 0; i < 10; i++) { // TODO 10 is a magic number
+  for (int i = 0; i < regions.size() - 1; i++) {
     m->input_type[i] = agg->inputs[i]->data_type;
   }
   m->output_type[0] = agg->outputs[0]->data_type;
@@ -530,7 +526,7 @@ void Aggregate::forward_task(Task const *task,
 //
   AggregateMeta const *m = *((AggregateMeta **)task->local_args);
 //
-  int n = regions.size() - FIXED_ARG_CNT;
+  int n = regions.size() - FIXED_ARG_CNT - 1; // Last region is for the output
 //
 //  // get gate_pred, gate_assign, output
   AccessorRW<float, 4> const acc_gate_pred(regions[0], FID_DATA); // causes dynamic type mismatch
