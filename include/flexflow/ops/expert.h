@@ -163,12 +163,8 @@ public:
   bool use_bias, add_bias_only_once;
   Realm::RegionInstance reserveInst;
   // PEFT related fields
-  void *output_activation_buffer;
-  size_t allocated_peft_buffer_size = 0;
-public:
-  Realm::RegionInstance reserveInst;
-  // PEFT related fields
   void *input_activation;
+  void *output_activation_buffer;
   size_t allocated_peft_buffer_size = 0;
 };
 
