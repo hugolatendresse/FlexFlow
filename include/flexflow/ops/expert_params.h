@@ -2,13 +2,15 @@
 
 #include "flexflow/ffconst.h"
 #include "flexflow/fftype.h"
+#include "flexflow/op_meta.h"
+#include "flexflow/operator.h"
 #include "flexflow/parallel_tensor.h"
+
 
 namespace FlexFlow {
 
 class ExpertParams {
 public:
-  LayerID layer_guid;
   LayerID layer_guid;
   int out_channels;
   bool use_bias;
