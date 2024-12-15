@@ -114,6 +114,17 @@ public:
                               GenericTensorAccessorR const &output_grad,
                               GenericTensorAccessorW const &input1_grad,
                               GenericTensorAccessorW const &input2_grad);
+
+public:
+  int in_channels, out_channels;
+  ActiMode activation;
+  RegularizerMode kernel_reg_type;
+  float kernel_reg_lambda;
+  bool use_bias;
+  ParallelTensor replica;
+  DataType quantization_type;
+  bool offload;
+
 };
 
 class ExpertMeta : public OpMeta {
