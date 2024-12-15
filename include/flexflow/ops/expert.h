@@ -16,14 +16,28 @@ public:
   using Params = ExpertParams;
   using Input = std::pair<ParallelTensor, ParallelTensor>;
   Expert(FFModel &model,
-                   Params const &params,
-                   Input const &inputs,
-                   char const *name = nullptr);
+               Expert const &other,
+               const ParallelTensor input,
+               bool allocate_weights)
   Expert(FFModel &model,
-                   LayerID const &_layer_guid,
-                   const ParallelTensor _input1,
-                   const ParallelTensor _input2,
-                   char const *name = nullptr);
+                 ExpertParams const &params,
+                 ParallelTensor const input,
+                 char const *name,
+                 bool allocate_weights)
+  Expert(FFModel &model,
+                 LayerID const &_layer_guid,
+                 const ParallelTensor _input,
+                 int out_dim_hidden, // TODO see if need intermediate too
+                 ActiMode _activation,
+                 RegularizerMode _kernel_reg_type,
+                 float _kernel_reg_lambda,
+                 bool _use_bias,
+                 DataType _data_type,
+                 DataType _quantization_type,
+                 bool _offload,
+                 bool allocate_weights,
+                 char const *name)
+
   void init(FFModel const &) override;
   void init_inference(FFModel const &,
                       std::vector<ParallelTensor> const &,

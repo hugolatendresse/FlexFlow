@@ -167,7 +167,7 @@ Op *Expert::create_operator_from_layer(
   return new Expert(model,
                     layer->layer_guid,
                     inputs[0],
-                    outdim_dim_hidden,
+                    outdim_hidden,
                     activation,
                     kernel_reg_type,
                     kernel_reg_lambda,
@@ -184,7 +184,7 @@ Op *Expert::create_operator_from_layer(
 // }
 
 Expert::Expert(FFModel &model,
-               Linear const &other,
+               Expert const &other,
                const ParallelTensor input,
                bool allocate_weights)
     : Expert(model,
@@ -202,7 +202,7 @@ Expert::Expert(FFModel &model,
              other.name) {}
 
 Expert::Expert(FFModel &model,
-               LinearParams const &params,
+               ExpertParams const &params,
                ParallelTensor const input,
                char const *name,
                bool allocate_weights)
