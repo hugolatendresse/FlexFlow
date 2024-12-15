@@ -18,12 +18,12 @@ public:
   Expert(FFModel &model,
                Expert const &other,
                const ParallelTensor input,
-               bool allocate_weights)
+               bool allocate_weights);
   Expert(FFModel &model,
                  ExpertParams const &params,
                  ParallelTensor const input,
                  char const *name,
-                 bool allocate_weights)
+                 bool allocate_weights);
   Expert(FFModel &model,
                  LayerID const &_layer_guid,
                  const ParallelTensor _input,
@@ -36,7 +36,7 @@ public:
                  DataType _quantization_type,
                  bool _offload,
                  bool allocate_weights,
-                 char const *name)
+                 char const *name);
 
   void init(FFModel const &) override;
   void init_inference(FFModel const &,
