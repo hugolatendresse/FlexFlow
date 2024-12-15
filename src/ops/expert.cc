@@ -130,6 +130,7 @@ Tensor FFModel::expert(const Tensor input,
     kernel_initializer,
     CHOSEN_SYNC_TYPE);
   }
+  li->add_int_property("use_bias", use_bias);
   li->add_int_property("out_dim_intermediate", outDim_intermediate);
   li->add_int_property("out_dim_hidden", outDim_hidden);
   li->add_int_property("activation", activation);
@@ -146,6 +147,8 @@ Op *Expert::create_operator_from_layer(
     Layer const *layer,
     std::vector<ParallelTensor> const &inputs) {
   long long value;
+  layer->get_int_property("use_bias", value);
+  bool use_bias = (bool)value;
   layer->get_int_property("out_dim_intermediate", value);
   int outdim_intermediate = value;
   layer->get_int_property("out_dim_hidden", value);
@@ -164,7 +167,7 @@ Op *Expert::create_operator_from_layer(
   return new Expert(model,
                     layer->layer_guid,
                     inputs[0],
-                    outdim,
+                    outdim_dim_hidden,
                     activation,
                     kernel_reg_type,
                     kernel_reg_lambda,
