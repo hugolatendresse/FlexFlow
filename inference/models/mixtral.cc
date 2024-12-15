@@ -233,7 +233,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
         ff_norm, // (hidden_size, 1, 128)
         mixtral_config.num_local_experts,
         AC_MODE_NONE,
-        false,
+        false, // use_bias = False
         DT_NONE,
         nullptr,
         nullptr,

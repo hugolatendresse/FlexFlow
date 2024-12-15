@@ -58,6 +58,7 @@
 #include "flexflow/ops/rms_norm.h"
 #include "flexflow/ops/sampling.h"
 #include "flexflow/ops/sigmoid_silu_multi.h"
+#include "flexflow/ops/expert.h"
 #include "flexflow/ops/softmax.h"
 #include "flexflow/ops/spec_inc_multihead_self_attention.h"
 #include "flexflow/ops/split.h"
@@ -3263,6 +3264,12 @@ Op *FFModel::create_operator_from_layer(
     case OP_SIGMOID_SILU_MULTI: {
       Op *op =
           SigmoidSiluMulti::create_operator_from_layer(*this, layer, inputs);
+      operators.push_back(op);
+      return op;
+    }
+    case OP_EXPERT: {
+      Op *op =
+          Expert::create_operator_from_layer(*this, layer, inputs);
       operators.push_back(op);
       return op;
     }

@@ -46,6 +46,7 @@
 #include "flexflow/ops/rms_norm.h"
 #include "flexflow/ops/sampling.h"
 #include "flexflow/ops/sigmoid_silu_multi.h"
+#include "flexflow/ops/expert.h"
 #include "flexflow/ops/softmax.h"
 #include "flexflow/ops/spec_inc_multihead_self_attention.h"
 #include "flexflow/ops/split.h"
@@ -2790,6 +2791,10 @@ void FFModel::deserialize_graph_optimal_view(
       }
       case OP_LINEAR: {
         node = Linear::deserialize(*this, dez, inputs, num_inputs);
+        break;
+      }
+      case OP_EXPERT: {
+        node = Expert::deserialize(*this, dez, inputs, num_inputs);
         break;
       }
       case OP_LORA: {

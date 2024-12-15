@@ -16,6 +16,7 @@
 #include "flexflow/ops/element_binary.h"
 #include "flexflow/ops/element_unary.h"
 #include "flexflow/ops/embedding.h"
+#include "flexflow/ops/expert.h"
 #include "flexflow/ops/flat.h"
 #include "flexflow/ops/gather.h"
 #include "flexflow/ops/groupby.h"
@@ -33,6 +34,7 @@
 #include "flexflow/ops/rms_norm.h"
 #include "flexflow/ops/sampling.h"
 #include "flexflow/ops/sigmoid_silu_multi.h"
+#include "flexflow/ops/expert.h"
 #include "flexflow/ops/softmax.h"
 #include "flexflow/ops/spec_inc_multihead_self_attention.h"
 #include "flexflow/ops/split.h"
@@ -104,6 +106,8 @@ tl::optional<OperatorParameters> get_op_parameters(Op const *op) {
       return ((AddBiasResidualLayerNorm *)op)->get_params();
     case OP_SIGMOID_SILU_MULTI:
       return ((SigmoidSiluMulti *)op)->get_params();
+    case OP_EXPERT:
+      return ((Expert *)op)->get_params();
     case OP_REDUCE_SUM:
       return ((Reduce *)op)->get_params();
     case OP_RESHAPE:
