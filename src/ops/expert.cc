@@ -84,24 +84,24 @@ Tensor FFModel::expert(const Tensor input,
 
     int numdims_w1 = input->num_dims;
     int dims_w1[MAX_TENSOR_DIM];
-    for (int i = 0; i < numdims; i++) {
+    for (int i = 0; i < numdims_w1; i++) {
       dims_w1[i] = input->dims[i];
     }
     dims_w1[0] = outDim_intermediate;
 
     int numdims_w2 = input->num_dims;
     int dims_w2[MAX_TENSOR_DIM];
-    for (int i = 0; i < numdims; i++) {
+    for (int i = 0; i < numdims_w2; i++) {
       dims_w2[i] = input->dims[i];
     }
     dims_w2[0] = outDim_hidden;
 
     //    std::cout << "Dense " << name << " Creating output tensor with dims[2] = " << dims[0] << std::endl;
     // dims[2] is always 1024
-    li->outputs1[0] = create_tensor_legion_ordering(
-        numdims_w1, dims_w1, data_type, li1, 0, true /*create_grad*/);
-    li->outputs2[0] = create_tensor_legion_ordering(
-    numdims_w2, dims_w2, data_type, li2, 0, true /*create_grad*/);
+    li->outputs[W1_IDX] = create_tensor_legion_ordering(
+        numdims_w1, dims_w1, data_type, li, 0, true /*create_grad*/);
+    li->outputs[W2_IDX] = create_tensor_legion_ordering(
+    numdims_w2, dims_w2, data_type, li, 0, true /*create_grad*/);
   }
   {
     int dims_in_out_w1[2] = {input->dims[0], outDim_intermediate};
