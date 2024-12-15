@@ -252,7 +252,7 @@ Expert::Expert(FFModel &model,
   auto dimension_names =
       this->get_params().get_dimension_names(_input->get_shape());
   this->in_channels =
-      _input->dims[dimension_names.at(LinearParams::INPUT_CHANNEL)].size;
+      _input->dims[dimension_names.at(ExpertParams::INPUT_CHANNEL)].size;
 
   ParallelTensorShape input_shape = this->inputs[0]->get_shape();
   ParallelTensorShape output_shape, kernel_shape, bias_shape;
@@ -282,7 +282,8 @@ Expert::Expert(FFModel &model,
       kernel_shape.dims[0].size = get_quantization_to_byte_size(
           data_type, quantization_type, kernel_shape.dims[0].size);
     }
-    weights[KERNEL_IDX] = model.create_parallel_weight_legion_ordering(
+    // TODO understang if this ever gets called when running tinymistral or llama
+    weights[W1_IDX] = model.create_parallel_weight_legion_ordering(
         kernel_shape.num_dims,
         kernel_shape.dims,
         quantization_type == DT_NONE ? _data_type : quantization_type,
@@ -470,7 +471,7 @@ OpMeta *Linear::init_task(Task const *task,
 }
 
 template <typename DT, typename WT, int NDIM>
-OpMeta *Linear::init_task_with_dim(Task const *task,
+OpMeta *Expert::init_task_with_dim(Task const *task,
                                    std::vector<PhysicalRegion> const &regions,
                                    Context ctx,
                                    Runtime *runtime) {
@@ -510,7 +511,7 @@ OpMeta *Linear::init_task_with_dim(Task const *task,
         handle.offload_reserve_space, handle.offload_reserve_space_size);
   }
 
-  LinearMeta *m = new LinearMeta(
+  ExpertMeta *m = new ExpertMeta(
       handle, batch_size, linear, gpu_mem_allocator, in_dim * out_dim);
   m->activation = linear->activation;
   m->kernel_reg_type = linear->kernel_reg_type;
@@ -531,7 +532,7 @@ OpMeta *Linear::init_task_with_dim(Task const *task,
   return m;
 }
 
-void Linear::forward(FFModel const &ff) {
+void Expert::forward(FFModel const &ff) {
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -565,7 +566,7 @@ void Linear::forward(FFModel const &ff) {
   runtime->execute_index_space(ctx, launcher);
 }
 
-FutureMap Linear::inference(FFModel const &ff,
+FutureMap Expert::inference(FFModel const &ff,
                             BatchConfigFuture const &bc,
                             std::vector<ParallelTensor> const &batch_inputs,
                             std::vector<ParallelTensor> const &batch_outputs,
@@ -619,13 +620,13 @@ FutureMap Linear::inference(FFModel const &ff,
   return runtime->execute_index_space(ctx, launcher);
 }
 
-void Linear::inference_task(Task const *task,
+void Expert::inference_task(Task const *task,
                             std::vector<PhysicalRegion> const &regions,
                             Context ctx,
                             Runtime *runtime) {
   Domain input_domain = runtime->get_index_space_domain(
       ctx, task->regions[0].region.get_index_space());
-  LinearMeta *m = *((LinearMeta **)task->local_args);
+  ExpertMeta *m = *((ExpertMeta **)task->local_args);
   BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
   if (bc->num_tokens == 0) {
     return;
@@ -679,7 +680,7 @@ void Linear::inference_task(Task const *task,
         !(m->add_bias_only_once && task->index_point.point_data[0] != 0)) {
       weights_accessors.push_back(bias);
     }
-    Linear::save_inference_tensors_to_file(
+    Expert::save_inference_tensors_to_file(
         m, shard_id, bc, {input}, weights_accessors, {output});
     printf("\tw=[%i,%i].T @ in=[%i,%i] -> out=[%i,%i]\n",
            in_dim,
@@ -691,7 +692,7 @@ void Linear::inference_task(Task const *task,
   }
 }
 
-FutureMap Linear::peft_bwd(FFModel const &ff,
+FutureMap Expert::peft_bwd(FFModel const &ff,
                            BatchConfigFuture const &bc,
                            std::vector<ParallelTensor> const &batch_inputs,
                            std::vector<ParallelTensor> const &batch_outputs,
@@ -706,12 +707,12 @@ FutureMap Linear::peft_bwd(FFModel const &ff,
   regions[3](I): bias
 */
 template <typename DT, typename WT, int NDIM>
-void Linear::forward_task_with_dim(Task const *task,
+void Expert::forward_task_with_dim(Task const *task,
                                    std::vector<PhysicalRegion> const &regions,
                                    Context ctx,
                                    Runtime *runtime) {
   // Linear* linear = (Linear*) task->args;
-  LinearMeta const *m = *((LinearMeta **)task->local_args);
+  ExpertMeta const *m = *((ExpertMeta **)task->local_args);
   assert(regions.size() == (3 + static_cast<size_t>(m->use_bias)));
   assert(task->regions.size() == (3 + static_cast<size_t>(m->use_bias)));
 
@@ -994,7 +995,7 @@ Node Expert::deserialize(FFModel &ff,
   params.quantization_type = quantization_type;
   params.offload = offload;
   strcpy(params.name, name);
-  return ff.get_or_create_node<Linear>(inputs[0], params);
+  return ff.get_or_create_node<Expert>(inputs[0], params);
 }
 
 ExpertParams Expert::get_params() const {
