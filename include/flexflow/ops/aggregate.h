@@ -88,7 +88,7 @@ public:
                                      int rows,
                                      int const batch_size,
                                      int out_dim);
-  static void inference_kernel_wrapper(AggregateMeta const *m, // TODO never actually defined, I think
+  static void inference_kernel_wrapper(AggregateMeta const *m,  // never actually defined
                                    float **exp_preds,
                                    int const *acc_gate_assign_ptr,
                                    float const *acc_gate_pred_ptr,

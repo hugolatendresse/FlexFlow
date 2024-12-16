@@ -309,7 +309,6 @@ void Aggregate::backward_kernel_wrapper(AggregateMeta const *m,
   }
 }
 
-// Only needed if we allocate memory , hwihci s not our case
 AggregateMeta::AggregateMeta(FFHandler handler,
                              Aggregate const *aggr,
                              MemoryAllocator &gpu_mem_allocator)

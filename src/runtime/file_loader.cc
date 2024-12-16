@@ -754,7 +754,6 @@ void FileDataLoader::load_single_weight_tensor(FFModel *ff,
   // assert(data_type_size(weight->data_type) == sizeof(DT));
   DT *data = (DT *)malloc(sizeof(DT) * volume);
 
-  // llama has l-name = "layers.0.self_attn.qkv_proj_1000003" while tinymistral has l-name = "layers.0.self_attn_qkv_proj"
   std::string weight_filename = removeGuidOperatorName(std::string(l->name));
   bool is_attn_proj = false, is_o_proj = false;
 

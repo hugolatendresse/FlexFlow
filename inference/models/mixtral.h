@@ -148,13 +148,6 @@ public:
             assert(false);
           }
 
-//          try { // TODO sliding_window is null in the JSON config file of mistralai/Mixtral-8x7B-v0.1
-//            sliding_window = model_config.at("sliding_window");
-//          } catch (json::exception const &e) {
-//            std::cerr << "Error reading 'sliding_window': " << e.what() << std::endl;
-//            assert(false);
-//          }
-
           try {
             tie_word_embeddings = model_config.at("tie_word_embeddings");
           } catch (json::exception const &e) {
@@ -195,7 +188,6 @@ public:
       std::cout << "\trope_theta: " << rope_theta << std::endl;
       std::cout << "\trouter_aux_loss_coef: " << router_aux_loss_coef
                 << std::endl;
-//      std::cout << "\tsliding_window: " << sliding_window << std::endl; // TODO
       std::cout << "\ttie_word_embeddings: " << tie_word_embeddings
                 << std::endl;
       std::cout << "\tvocab_size: " << vocab_size << std::endl;
@@ -211,7 +203,6 @@ public:
     float rms_norm_eps;
     float rope_theta;
     float router_aux_loss_coef;
-//    int sliding_window; // TODO
     bool tie_word_embeddings;
     int vocab_size;
     int max_beam_width, max_beam_depth;

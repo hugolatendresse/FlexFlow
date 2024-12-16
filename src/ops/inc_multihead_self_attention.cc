@@ -411,7 +411,6 @@ void IncMultiHeadSelfAttention::init_inference(
     std::vector<ParallelTensor> const &batch_inputs,
     std::vector<ParallelTensor> const &batch_outputs,
     MachineView const *mv) {
-//  printf("running IncMultiHeadSelfAttention::init_inference\n");
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = batch_outputs[0]->parallel_is;
   ArgumentMap argmap;
@@ -446,10 +445,6 @@ void IncMultiHeadSelfAttention::init_inference(
 }
 
 void IncMultiHeadSelfAttention::init(FFModel const &ff) {
-  printf("running IncMultiHeadSelfAttention::init\n");
-  // I don't think this ever runs
-  printf("\n\n\n\n IncMultiHeadSelfAttention::init is running!!!!!!!!!! \n\n\n\n");
-
   assert(check_output_input_weight_same_parallel_is());
   parallel_is = outputs[0]->parallel_is;
   ArgumentMap argmap;
@@ -490,11 +485,8 @@ OpMeta *IncMultiHeadSelfAttention::init_task(
     std::vector<PhysicalRegion> const &regions,
     Context ctx,
     Runtime *runtime) {
-//  printf("running IncMultiHeadSelfAttention::init_task\n");
   IncMultiHeadSelfAttention const *attn = (IncMultiHeadSelfAttention *)task->args;
   FFHandler handle = *((FFHandler const *)task->local_args);
-  // We call the below to get the shape info, so we can do the assertions
-  // I also shouldnt care about offloading
   GenericTensorAccessorR input =
       helperGetGenericTensorAccessorRO(attn->inputs[0]->data_type,
                                        regions[0],
@@ -552,7 +544,6 @@ FutureMap IncMultiHeadSelfAttention::inference(
     std::vector<ParallelTensor> const &batch_inputs,
     std::vector<ParallelTensor> const &batch_outputs,
     MachineView const *mv) {
-//  printf("running IncMultiHeadSelfAttention::inference\n");
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -598,7 +589,6 @@ void IncMultiHeadSelfAttention::inference_task(
     std::vector<PhysicalRegion> const &regions,
     Context ctx,
     Runtime *runtime) {
-//  printf("running IncMultiHeadSelfAttention::inference_task\n");
   assert(task->regions.size() == regions.size());
 
   BatchConfig const *bc = BatchConfig::from_future(task->futures[0]);
