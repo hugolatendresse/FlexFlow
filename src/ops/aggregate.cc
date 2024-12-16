@@ -27,7 +27,7 @@ using Legion::coord_t;
 using Legion::Domain;
 using Legion::FutureMap;
 using Legion::IndexLauncher;
-using Legion::InlineLauncher; // TODO used in silu, but never called, try deleting
+using Legion::InlineLauncher;
 using Legion::Machine;
 using Legion::Memory;
 using Legion::PhysicalRegion;
@@ -38,7 +38,7 @@ using Legion::Runtime;
 using Legion::Task;
 using Legion::TaskArgument;
 using Legion::TaskLauncher;
-using PCG::Node; // TODO not used in silu, not sure what this does
+using PCG::Node;
 
 // Number of inputs that are not expert predictions
 #define FIXED_ARG_CNT 4
@@ -135,12 +135,6 @@ Aggregate::Aggregate(FFModel &model,
   assert(inputs[1]->num_dims >= 2 + 1);
   assert(inputs[2]->num_dims >= 2 + 1);
   assert(inputs[3]->num_dims >= 2 + 1);
-
-//  printf("_inputs[0]->dims[2].size = %d\n", _inputs[0]->dims[2].size);
-//  printf("_inputs[0]->dims[2].degree = %d\n", _inputs[0]->dims[2].degree);
-//  printf("_inputs[0]->dims[2].parallel_idx = %d\n", _inputs[0]->dims[2].parallel_idx);
-//  printf("_inputs[0]->dims[2].is_replica_dim = %d\n", _inputs[0]->dims[2].is_replica_dim);
-
 
   // TODO uncomment all those assertions
 //  assert(n <= AGGREGATE_MAX_N && "Increase AGGREGATE_MAX_N in #define");
