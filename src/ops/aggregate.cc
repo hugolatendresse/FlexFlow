@@ -329,8 +329,6 @@ OpMeta *Aggregate::init_task(Task const *task,
 }
 
 void Aggregate::forward(FFModel const &ff) {
-  printf("running Aggregate::forward\n");
-  printf("\n\n\n\n Aggregate::init is running!!!!!!!!!! \n\n\n\n"); // Don't expect this to run
   ArgumentMap argmap;
   Context ctx = ff.config.lg_ctx;
   Runtime *runtime = ff.config.lg_hlr;
@@ -344,7 +342,6 @@ void Aggregate::forward(FFModel const &ff) {
                          0 /*mapper_id*/,
                          outputs[0]->machine_view.hash());
 
-  printf("Entered Aggregate::forward\n");
   // gate_preds
   launcher.add_region_requirement(RegionRequirement(inputs[0]->part,
                                                     0 /*projection id*/,
@@ -463,7 +460,6 @@ FutureMap Aggregate::inference(FFModel const &ff,
                                                     WRITE_ONLY,
                                                     EXCLUSIVE,
                                                     batch_outputs[0]->region));
-//  launcher.add_field(n + 2, FID_DATA);
   launcher.add_field(n + FIXED_ARG_CNT, FID_DATA);
 
   return runtime->execute_index_space(ctx, launcher);

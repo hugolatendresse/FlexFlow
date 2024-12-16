@@ -736,7 +736,6 @@ bool IncMultiHeadSelfAttention::get_int_parameter(PMParameter para,
   }
 }
 
-// Just for benchmarking, don't need that
 bool IncMultiHeadSelfAttention::measure_operator_cost(
     Simulator *sim, MachineView const &mv, CostMetrics &cost_metrics) const {
   return false;

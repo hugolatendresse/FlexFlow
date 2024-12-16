@@ -26,7 +26,7 @@
 #include <nlohmann/json.hpp>
 #include <stack>
 #include <stdexcept>
-#include <cassert> // For assert
+#include <cassert>
 
 namespace FlexFlow {
 

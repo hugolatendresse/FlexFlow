@@ -324,11 +324,7 @@ void MIXTRAL::create_mixtral_model(FFModel &ff,
       aggregate_inputs[4 + expert_idx] = w2;
     }
 
-    // TODO uncomment, but is a nice-to-have at this point.. or try normalizing with softmax????
-//    Tensor topk_values_reduced = ff.reduce_sum(topk_values, {0}, true);
-//    topk_values = ff.divide(topk_values, topk_values_reduced);
-
-  // TODO have 2 fixed inputs instead of 4
+    // Those two inputs are quick fixes to make aggregate work. They are not used in inference.
     Tensor topk_values_DUMMY = ff.softmax(
         topk_values,
         -1,
