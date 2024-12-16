@@ -71,7 +71,6 @@ void FFModel::residual_rms_norm(const Tensor input1,
                                 bool inplace_residual,
                                 DataType data_type,
                                 char const *name) {
-//  printf("input2 address: %p\n", input2);
 
   if (data_type == DT_NONE) {
     data_type = input1->data_type;
@@ -84,10 +83,6 @@ void FFModel::residual_rms_norm(const Tensor input1,
       (data_type != input2->data_type)
           ? cast(input2, data_type, "type cast for residual_rms_norm")
           : input2;
-//  printf("RRMSN %s: input1 dims: %d, input2 dims: %d\n",name, input1->num_dims, input2->num_dims);
-//  printf("RRMSN %s: input1 dims[0] size: %d, input2 dims[0] size: %d\n",name, input1->dims[0], input2->dims[0]);
-//  printf("RRMSN %s: input1 dims[1] size: %d, input2 dims[1] size: %d\n",name, input1->dims[1], input2->dims[1]);
-//  printf("RRMSN %s: input1 dims[2] size: %d, input2 dims[2] size: %d\n",name, input1->dims[2], input2->dims[2]);
   Layer *rm = new Layer(this,
                         OP_RESIDUAL_RMS_NORM,
                         data_type,
@@ -210,10 +205,6 @@ ResidualRMSNorm::ResidualRMSNorm(FFModel &model,
     assert(_input1->dims[i].degree == 1);
   }
   // Check that the two inputs have the same dimensions
-//  printf("ResidualRMSNorm: input1 dims: %d, input2 dims: %d\n", _input1->num_dims, _input2->num_dims);
-//  printf("ResidualRMSNorm: input1 dims[0] size: %d, input2 dims[0] size: %d\n", _input1->dims[0].size, _input2->dims[0].size);
-//  printf("ResidualRMSNorm: input1 dims[1] size: %d, input2 dims[1] size: %d\n", _input1->dims[1].size, _input2->dims[1].size);
-//  printf("ResidualRMSNorm: input1 dims[2] size: %d, input2 dims[2] size: %d\n", _input1->dims[2].size, _input2->dims[2].size); // Mistatch! 128 vs 1
   for (int i = 0; i < _input1->num_dims; i++) {
     assert(_input2->dims[i] == _input1->dims[i]);
   }
